@@ -23,7 +23,7 @@ import {
   type NodeObservation,
 } from "./observe";
 import { certify, phasesFromComms, type QlfCertificate } from "./qlf";
-import { exchangeProc, helloProc, reduce, type Execution, type ReductionStep } from "./rho";
+import { exchangeProc, helloProc, paymentProc, reduce, type Execution, type ReductionStep } from "./rho";
 import type {
   Claim,
   EvidenceRef,
@@ -51,7 +51,7 @@ export const MUTATIONS: MutationMeta[] = [
   { id: "node-c-lied", title: "What if node C lied?", summary: "Replica C reports a different block hash at the same height.", applies: ["exchange-commit", "exchange-abort", "hello-rho", "cap-payment"] },
   { id: "drop-capability", title: "What if this capability did not exist?", summary: "Remove the authorizing capability and replay from QuantumOS.", applies: ["exchange-commit", "exchange-abort", "cap-payment"] },
   { id: "force-abort", title: "What if the remote leg aborted?", summary: "Force abort of the prepared local leg instead of commit.", applies: ["exchange-commit"] },
-  { id: "dup-validator", title: "Duplicate validator identity", summary: "Two observations advertise the same proposer.", applies: ["exchange-commit", "exchange-abort", "hello-rho", "cap-payment"] },
+  { id: "dup-validator", title: "Duplicate validator identity", summary: "Two observations advertise the same validator identity.", applies: ["exchange-commit", "exchange-abort", "hello-rho", "cap-payment"] },
   { id: "no-justification", title: "Missing justification", summary: "Justification set absent from node A.", applies: ["exchange-commit", "exchange-abort", "hello-rho", "cap-payment"] },
   { id: "tamper-trace", title: "What if reduction step 4 was different?", summary: "Replay against a tampered continuation at the first COMM after deposit.", applies: ["exchange-commit", "hello-rho", "cap-payment"] },
 ];
@@ -92,8 +92,7 @@ function worst(a: Status, b: Status): Status {
 
 function envelope(partial: Omit<EventEnvelope, "hash" | "payloadHash" | "prevHash"> & { prev: string | null }): EventEnvelope {
   const { prev, ...rest } = partial;
-  // Hash every evidence-bearing field, not merely the human-readable summary.
-  const payloadHash = hexPrefixed(digest(["envelope-payload-v2", JSON.stringify(rest)]));
+  const payloadHash = hexPrefixed(digest(["envelope-payload-v2", rest]));
   const hash = hexPrefixed(digest(["env-v2", payloadHash, prev ?? "genesis"]));
   return { ...rest, prevHash: prev, payloadHash, hash };
 }
@@ -104,11 +103,15 @@ export function compile(scenario: ScenarioId, mutation: MutationId): Reality {
   const abortScenario = scenario === "exchange-abort" || forceAbort;
   const isExchange = scenario === "exchange-commit" || scenario === "exchange-abort";
   const needsCap = scenario !== "hello-rho";
-  const cap = dropCap && needsCap ? null : needsCap ? "cap:exchange:bob:prepare" : "cap:room:write";
+  const cap = dropCap && needsCap
+    ? null
+    : needsCap
+      ? scenario === "cap-payment" ? "cap:payment:bob:authorize" : "cap:exchange:bob:prepare"
+      : "cap:room:write";
   const lemma = scenario === "cap-payment" ? "payment-authorized" : isExchange ? "cross-shard-exchange" : "hello-comm";
   const authorized = cap !== null;
   const qos: QosEvent = {
-    eventId: `evt_${digest(["qos", scenario]).slice(0, 4)}`,
+    eventId: `evt_${digest(["qos", scenario, mutation]).slice(0, 8)}`,
     room: "cap:room:05214747236101414325074505234721",
     peer: scenario === "hello-rho" ? "Alice" : "Bob",
     capability: cap, lemma, authorized, timestamp: TS,
@@ -136,22 +139,17 @@ export function compile(scenario: ScenarioId, mutation: MutationId): Reality {
       w.conserved = poolsConserved(w, genesis);
       exchange = w;
       const verbs = abortScenario ? ["deposit", "prepare", "abort"] : ["deposit", "prepare", "prepareReceive", "commit", "commit"];
-      const { source, proc } = exchangeProc(verbs);
-      rholangSource = source;
-      execution = reduce(source, proc);
+      const generated = exchangeProc(verbs);
+      rholangSource = generated.source;
+      execution = reduce(generated.source, generated.proc);
     } else if (scenario === "cap-payment") {
-      const { source, proc } = exchangeProc(["authorize", "transfer"]);
-      rholangSource = `new purse, ack in {
-  purse!("authorize", "payment-authorized") |
-  for (@ok <- purse) {
-    purse!("transfer", 20, "alice") | for (@rcpt <- ack) { Nil }
-  }
-}`;
-      execution = reduce(source, proc);
+      const generated = paymentProc();
+      rholangSource = generated.source;
+      execution = reduce(generated.source, generated.proc);
     } else {
-      const { source, proc } = helloProc();
-      rholangSource = source;
-      execution = reduce(source, proc);
+      const generated = helloProc();
+      rholangSource = generated.source;
+      execution = reduce(generated.source, generated.proc);
     }
 
     if (execution) {
@@ -175,7 +173,9 @@ export function compile(scenario: ScenarioId, mutation: MutationId): Reality {
     }
   }
 
-  const qlf = authorized ? certify(phasesFromComms(execution?.comms ?? 0), true) : certify(["+"], false);
+  const qlf = authorized
+    ? certify(phasesFromComms(execution?.comms ?? 0), Boolean(execution && !execution.stuck))
+    : certify(["+"], false);
   const primary = blocks[0];
   const obsOpts = {
     lieNode: mutation === "node-c-lied" ? "C" : undefined,
@@ -208,15 +208,15 @@ export function compile(scenario: ScenarioId, mutation: MutationId): Reality {
     replay = { expectedStateHash: expected, observedStateHash: observed, match: expected === observed, firstDivergence: first, stepsCompared: execution.steps.length };
   }
 
-  const envelopes = linkEnvelopes({ qos, qlf, rholangSource, execution, deploys, blocks, observations, cross, lattice, authorized });
   const { invariants, checks, claims, witness, status, why } = evaluate({ qos, qlf, execution, exchange, blocks, observations, cross, casper, lattice, replay, authorized, mutation });
+  const envelopes = linkEnvelopes({ qos, qlf, rholangSource, execution, deploys, blocks, observations, cross, lattice, authorized, verificationStatus: status });
   return { scenario, mutation, qos, qlf, rholangSource, execution, exchange, deploys, blocks, observations, cross, casper, lattice, envelopes, invariants, checks, claims, witness, replay, status, why };
 }
 
 function linkEnvelopes(args: {
   qos: QosEvent; qlf: QlfCertificate; rholangSource: string | null; execution: Execution | null;
   deploys: Deploy[]; blocks: Block[]; observations: NodeObservation[]; cross: CrossNodeReport | null;
-  lattice: LatticeReport | null; authorized: boolean;
+  lattice: LatticeReport | null; authorized: boolean; verificationStatus: Status;
 }): EventEnvelope[] {
   const out: EventEnvelope[] = [];
   let prev: string | null = null;
@@ -228,16 +228,16 @@ function linkEnvelopes(args: {
     { source: "QuantumOS", field: "event_id", value: args.qos.eventId }, { source: "QuantumOS", field: "peer", value: args.qos.peer }, { source: "QuantumOS", field: "capability", value: args.qos.capability ?? "ABSENT" }, { source: "QuantumOS", field: "lemma", value: args.qos.lemma }, { source: "QuantumOS", field: "room", value: args.qos.room },
   ] });
 
-  add({ eventId: `qlf_${args.qlf.digest.slice(0, 6)}`, parentEvent: args.qos.eventId, layer: "qlf", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: null, normalizedProcess: null, executionTraceHash: null, deployId: null, blockHash: null, nodeObservations: [], verificationResults: [args.qlf.balanced ? "PASS" : "FAIL"], label: "QLF certificate", summary: `phase ${args.qlf.phaseString || "∅"} · gap ${args.qlf.spectralGap} · ${args.qlf.spectralForm}`, fields: [
+  add({ eventId: `qlf_${args.qlf.digest.slice(0, 8)}`, parentEvent: args.qos.eventId, layer: "qlf", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: null, normalizedProcess: null, executionTraceHash: null, deployId: null, blockHash: null, nodeObservations: [], verificationResults: [args.qlf.balanced ? "PASS" : "FAIL"], label: "QLF certificate", summary: `phase ${args.qlf.phaseString || "∅"} · gap ${args.qlf.spectralGap} · ${args.qlf.spectralForm}`, fields: [
     { source: "QLF", field: "phase_string", value: args.qlf.phaseString || "(empty)" }, { source: "QLF", field: "count(+)", value: String(args.qlf.countPos) }, { source: "QLF", field: "count(-)", value: String(args.qlf.countNeg) }, { source: "QLF", field: "spectral_gap", value: String(args.qlf.spectralGap) }, { source: "QLF", field: "symmetric", value: String(args.qlf.symmetric) }, { source: "QLF", field: "spectral_form", value: args.qlf.spectralForm },
   ] });
 
   if (args.rholangSource && args.execution) {
     const sourceHash = hexPrefixed(digest(["src", args.rholangSource]));
-    add({ eventId: `rho_${args.execution.traceHash.slice(2, 8)}`, parentEvent: out[out.length - 1]!.eventId, layer: "rholang", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: sourceHash, normalizedProcess: args.execution.normalized, executionTraceHash: args.execution.traceHash, deployId: args.deploys[0]?.id ?? null, blockHash: null, nodeObservations: [], verificationResults: [args.execution.stuck ? "WARN" : "PASS"], label: "Rholang process", summary: `${args.execution.comms} COMM · trace ${shortHex(args.execution.traceHash)}`, fields: [
+    add({ eventId: `rho_${args.execution.traceHash.slice(2, 10)}`, parentEvent: out[out.length - 1]!.eventId, layer: "rholang", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: sourceHash, normalizedProcess: args.execution.normalized, executionTraceHash: args.execution.traceHash, deployId: args.deploys[0]?.id ?? null, blockHash: null, nodeObservations: [], verificationResults: [args.execution.stuck ? "WARN" : "PASS"], label: "Rholang process", summary: `${args.execution.comms} COMM · trace ${shortHex(args.execution.traceHash)}`, fields: [
       { source: "RholangProcess", field: "source_digest", value: sourceHash }, { source: "RholangProcess", field: "normalized", value: args.execution.normalized }, { source: "RholangProcess", field: "comms", value: String(args.execution.comms) },
     ] });
-    add({ eventId: `trace_${args.execution.steps.length}`, parentEvent: out[out.length - 1]!.eventId, layer: "rspace", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: sourceHash, normalizedProcess: args.execution.normalized, executionTraceHash: args.execution.traceHash, deployId: args.deploys[0]?.id ?? null, blockHash: null, nodeObservations: [], verificationResults: ["PASS"], label: "rspace reduction", summary: `${args.execution.steps.length} steps · state ${shortHex(args.execution.stateHash)}`, fields: args.execution.steps.slice(0, 8).map((s) => ({ source: "ExecutionTrace", field: `step_${s.n}`, value: `${s.rule} — ${s.description}` })) });
+    add({ eventId: `trace_${args.execution.steps.length}`, parentEvent: out[out.length - 1]!.eventId, layer: "rspace", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: sourceHash, normalizedProcess: args.execution.normalized, executionTraceHash: args.execution.traceHash, deployId: args.deploys[0]?.id ?? null, blockHash: null, nodeObservations: [], verificationResults: [args.execution.stuck ? "WARN" : "PASS"], label: "rspace reduction", summary: `${args.execution.steps.length} steps · state ${shortHex(args.execution.stateHash)}`, fields: args.execution.steps.slice(0, 8).map((s) => ({ source: "ExecutionTrace", field: `step_${s.n}`, value: `${s.rule} — ${s.description}` })) });
   }
 
   if (args.deploys[0] && args.blocks[0]) {
@@ -257,8 +257,8 @@ function linkEnvelopes(args: {
     ] });
   }
 
-  add({ eventId: "verify_final", parentEvent: out[out.length - 1]!.eventId, layer: "verification", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: args.rholangSource ? hexPrefixed(digest(["src", args.rholangSource])) : null, normalizedProcess: args.execution?.normalized ?? null, executionTraceHash: args.execution?.traceHash ?? null, deployId: args.deploys[0]?.id ?? null, blockHash: args.blocks[0]?.hash ?? null, nodeObservations: args.observations.map((o) => o.nodeId), verificationResults: [args.authorized ? "PASS" : "FAIL"], label: "Verification result", summary: "Result is bound to the envelopes above. Not a proof of Casper finality.", fields: [
-    { source: "VerificationReport", field: "envelopes", value: String(out.length + 1) }, { source: "VerificationReport", field: "linked", value: "sha256 envelope chain" },
+  add({ eventId: "verify_final", parentEvent: out[out.length - 1]!.eventId, layer: "verification", actorCapability: args.qos.capability, qlfDigest: hexPrefixed(args.qlf.digest), rholangSourceHash: args.rholangSource ? hexPrefixed(digest(["src", args.rholangSource])) : null, normalizedProcess: args.execution?.normalized ?? null, executionTraceHash: args.execution?.traceHash ?? null, deployId: args.deploys[0]?.id ?? null, blockHash: args.blocks[0]?.hash ?? null, nodeObservations: args.observations.map((o) => o.nodeId), verificationResults: [args.verificationStatus], label: "Verification result", summary: "Aggregate result bound to the evidence chain. Not a proof of Casper finality.", fields: [
+    { source: "VerificationReport", field: "envelopes", value: String(out.length + 1) }, { source: "VerificationReport", field: "linked", value: "sha256 envelope chain" }, { source: "VerificationReport", field: "aggregate_status", value: args.verificationStatus },
   ] });
   return out;
 }
@@ -284,18 +284,24 @@ function evaluate(args: {
     invariants.push({ id: "I-02", layer: "sentinel", name: "Block hash consistency", status: hashOut ? "FAIL" : "PASS", severity: "CRITICAL", detail: `${args.cross.hashAgreement ? "All" : "Not all"} reachable observations report the same block hash.`, evidence: args.observations.map((o) => ({ source: "FinalizedBlockEvidence", field: `${o.nodeId}.block_hash`, value: o.reachable ? o.blockHash : "UNAVAILABLE" })) });
   } else invariants.push({ id: "I-01", layer: "sentinel", name: "Finalized height consistency", status: "UNAVAILABLE", severity: "CRITICAL", detail: "No block was produced, so there is no height to observe.", evidence: [{ source: "RNodeObservation", field: "available", value: "false" }] });
 
-  const dup = args.observations.find((o) => o.duplicateValidator);
-  invariants.push({ id: "I-05", layer: "sentinel", name: "Node identity consistency", status: dup ? "FAIL" : args.observations.length ? "PASS" : "UNAVAILABLE", severity: "CRITICAL", detail: dup ? `Duplicate proposer ${dup.proposer}.` : "Distinct proposer identities on a single network and shard.", evidence: args.observations.map((o) => ({ source: "NetworkStatus", field: `${o.nodeId}.proposer`, value: o.proposer })) });
+  const validators = args.observations.filter((o) => o.reachable).map((o) => o.validatorId);
+  const duplicateValidator = validators.find((id, index) => validators.indexOf(id) !== index);
+  invariants.push({ id: "I-05", layer: "sentinel", name: "Validator identity consistency", status: duplicateValidator ? "FAIL" : args.observations.length ? "PASS" : "UNAVAILABLE", severity: "CRITICAL", detail: duplicateValidator ? `Duplicate validator identity ${duplicateValidator}.` : "Reachable observations expose distinct validator identities.", evidence: args.observations.map((o) => ({ source: "NetworkStatus", field: `${o.nodeId}.validator_id`, value: o.reachable ? o.validatorId : "UNAVAILABLE" })) });
 
-  const jOut = args.observations.find((o) => o.reachable && !o.justificationPresent);
-  invariants.push({ id: "I-06", layer: "sentinel", name: "Evidence provenance present", status: jOut ? "FAIL" : args.observations.length ? "PASS" : "UNAVAILABLE", severity: "WARNING", detail: "Each observation carries a signature and a structurally parseable justification set.", evidence: args.observations.map((o) => ({ source: "CasperEvidenceReport", field: `${o.nodeId}.justification_present`, value: String(o.justificationPresent) })) });
+  const evidenceOut = args.observations.find((o) => o.reachable && (!o.signaturePresent || !o.justificationPresent || o.justificationCount === 0 || o.malformedJustification || !o.fullBlockAvailable || !o.canonicalConsistent));
+  invariants.push({ id: "I-06", layer: "sentinel", name: "Evidence provenance present", status: evidenceOut ? "FAIL" : args.observations.length ? "PASS" : "UNAVAILABLE", severity: "WARNING", detail: evidenceOut ? `Incomplete evidence from ${evidenceOut.nodeId}.` : "Reachable observations carry signature, justification, full-block and canonical-consistency signals.", evidence: args.observations.flatMap((o) => [
+    { source: "CasperEvidenceReport", field: `${o.nodeId}.signature_present`, value: String(o.signaturePresent) },
+    { source: "CasperEvidenceReport", field: `${o.nodeId}.justification_present`, value: String(o.justificationPresent) },
+    { source: "CasperEvidenceReport", field: `${o.nodeId}.full_block_available`, value: String(o.fullBlockAvailable) },
+    { source: "CasperEvidenceReport", field: `${o.nodeId}.canonical_consistent`, value: String(o.canonicalConsistent) },
+  ]) });
 
   if (args.lattice) {
     invariants.push({ id: "L-01", layer: "lattice", name: "Quorum invariant (Q ≥ 2f+1)", status: args.lattice.committedCertificate ? "PASS" : "FAIL", severity: "CRITICAL", detail: `Committed votes ${args.lattice.committedCount} vs Q=${args.lattice.quorum}.`, evidence: [{ source: "SovereignLattice", field: "committed_count", value: String(args.lattice.committedCount) }, { source: "SovereignLattice", field: "quorum", value: String(args.lattice.quorum) }] });
-    invariants.push({ id: "L-02", layer: "lattice", name: "No conflicting prepared certificate", status: args.lattice.conflictingPrepare && !args.lattice.preparedCertificate ? "FAIL" : "PASS", severity: "CRITICAL", detail: args.lattice.conflictingPrepare ? "A conflicting Prepare was dropped; honest digest still formed a certificate." : "No conflicting Prepare observed.", evidence: [{ source: "SovereignLattice", field: "conflicting_prepare", value: String(args.lattice.conflictingPrepare) }, { source: "SovereignLattice", field: "prepared_certificate", value: String(args.lattice.preparedCertificate) }] });
+    invariants.push({ id: "L-02", layer: "lattice", name: "No conflicting prepared certificate", status: args.lattice.conflictingPrepare && !args.lattice.preparedCertificate ? "FAIL" : "PASS", severity: "CRITICAL", detail: args.lattice.conflictingPrepare ? "A conflicting Prepare was dropped; no conflicting prepared certificate was formed." : "No conflicting Prepare observed.", evidence: [{ source: "SovereignLattice", field: "conflicting_prepare", value: String(args.lattice.conflictingPrepare) }, { source: "SovereignLattice", field: "prepared_certificate", value: String(args.lattice.preparedCertificate) }] });
   }
 
-  if (args.cross) checks.push({ id: "finalized_block_cross_check", name: "Finalized block cross-check", status: args.cross.hashAgreement && args.cross.heightAgreement ? "PASS" : "FAIL", severity: "CRITICAL", message: `Agreement ratio ${args.cross.agreementRatio.toFixed(2)}. Cross-node agreement only — not Casper finality.`, source: "CrossNodeReport", evidence: [{ source: "CrossNodeReport", field: "agreement_ratio", value: args.cross.agreementRatio.toFixed(2) }, { source: "CrossNodeReport", field: "common_block_hash", value: args.cross.commonHash ?? "UNAVAILABLE" }] });
+  if (args.cross) checks.push({ id: "finalized_block_cross_check", name: "Finalized block cross-check", status: args.cross.status, severity: "CRITICAL", message: `Agreement ratio ${args.cross.agreementRatio.toFixed(2)}. Cross-node agreement only — not Casper finality.`, source: "CrossNodeReport", evidence: [{ source: "CrossNodeReport", field: "agreement_ratio", value: args.cross.agreementRatio.toFixed(2) }, { source: "CrossNodeReport", field: "common_block_hash", value: args.cross.commonHash ?? "UNAVAILABLE" }] });
   if (args.replay) checks.push({ id: "replay_match", name: "Execution replay", status: args.replay.match ? "PASS" : "FAIL", severity: "CRITICAL", message: args.replay.match ? "Local replay matches the observed post-state hash." : "Execution divergence: expected and observed state hashes differ.", source: "Replay", evidence: [{ source: "Replay", field: "match", value: String(args.replay.match) }] });
   checks.push({ id: "capability_gate", name: "Capability gate", status: args.authorized ? "PASS" : "FAIL", severity: "CRITICAL", message: args.authorized ? "Event originated under a present capability." : "Capability absent — no Rholang process was deployed.", source: "QuantumOS", evidence: [{ source: "QuantumOS", field: "authorized", value: String(args.authorized) }] });
 
@@ -316,7 +322,7 @@ function evaluate(args: {
       const c = args.observations.find((o) => o.letter === "C");
       witness = { layer: "sentinel", invariantId: "I-02", invariant: "Block hash consistency", expected: args.cross?.commonHash ?? "UNAVAILABLE", observed: c?.blockHash ?? LIE, source: "synthetic-node-C", field: "block_hash", impact: "Sentinel cross-node hash agreement fails. Lattice may still form a quorum on the honest digest — these are different claims.", verification: "FAIL" };
     }
-    if (args.mutation === "drop-capability") witness = { layer: "quantumos", invariantId: "I-QOS-01", invariant: "Capability authorizes the lemma", expected: "cap:exchange:bob:prepare (or cap:room:write)", observed: "ABSENT", source: "QuantumOS", field: "capability", impact: "No Rholang process, no deploy, no block, no Sentinel evidence.", verification: "FAIL" };
+    if (args.mutation === "drop-capability") witness = { layer: "quantumos", invariantId: "I-QOS-01", invariant: "Capability authorizes the lemma", expected: "required capability", observed: "ABSENT", source: "QuantumOS", field: "capability", impact: "No Rholang process, no deploy, no block, no Sentinel evidence.", verification: "FAIL" };
     if (args.mutation === "tamper-trace" && args.replay?.firstDivergence) witness = { layer: "rspace", invariantId: "I-RPL-01", invariant: "Local replay matches observed state hash", expected: args.replay.expectedStateHash, observed: args.replay.observedStateHash, source: "Replay", field: `reduction step ${args.replay.firstDivergence.step}`, impact: `First divergence: ${args.replay.firstDivergence.object}.`, verification: "FAIL" };
   }
 
