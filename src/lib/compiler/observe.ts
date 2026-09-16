@@ -1,4 +1,4 @@
-import { digest, hexPrefixed, shortHex } from "./hash";
+import { digest, hexPrefixed, sha256, shortHex } from "./hash";
 import type { EvidenceRef, Status } from "./types";
 
 export interface Deploy {
@@ -35,6 +35,7 @@ export interface NodeObservation {
   probeIntegrity: boolean;
   ready: boolean;
   validatorState: string;
+  validatorId: string;
   currentEpoch: number;
   lastFinalizedBlockNumber: number;
   latestBlockNumber: number;
@@ -123,10 +124,10 @@ export interface LatticeReport {
 }
 
 const NODES = [
-  { letter: "A", id: "synthetic-node-A", proposer: "val_0a17", stake: 250_000 },
-  { letter: "B", id: "synthetic-node-B", proposer: "val_0b42", stake: 250_000 },
-  { letter: "C", id: "synthetic-node-C", proposer: "val_0c88", stake: 250_000 },
-  { letter: "D", id: "synthetic-node-D", proposer: "val_0d05", stake: 250_000 },
+  { letter: "A", id: "synthetic-node-A", validatorId: "val_0a17", stake: 250_000 },
+  { letter: "B", id: "synthetic-node-B", validatorId: "val_0b42", stake: 250_000 },
+  { letter: "C", id: "synthetic-node-C", validatorId: "val_0c88", stake: 250_000 },
+  { letter: "D", id: "synthetic-node-D", validatorId: "val_0d05", stake: 250_000 },
 ] as const;
 
 export function proposeBlock(args: {
@@ -139,16 +140,26 @@ export function proposeBlock(args: {
   timestamp: string;
 }): Block {
   const justifications = [args.parentHash];
-  const material = digest([
-    "block",
+  const material = [
+    "block-v2",
     args.height,
     args.parentHash,
     args.proposer,
     args.shard,
     args.postStateHash,
-    ...args.deploys.map((d) => d.id),
-  ]);
-  const hash = hexPrefixed(material);
+    args.timestamp,
+    justifications,
+    args.deploys.map((d) => ({
+      id: d.id,
+      termHash: d.termHash,
+      deployer: d.deployer,
+      phloLimit: d.phloLimit,
+      phloPrice: d.phloPrice,
+      cost: d.cost,
+      shard: d.shard,
+    })),
+  ];
+  const hash = hexPrefixed(digest(material));
   return {
     height: args.height,
     hash,
@@ -175,7 +186,21 @@ export function observeBlock(
     canonicalBreak?: string;
   },
 ): NodeObservation[] {
-  const payload = digest(["payload", block.hash, block.postStateHash]);
+  const payload = hexPrefixed(
+    sha256(
+      JSON.stringify({
+        height: block.height,
+        hash: block.hash,
+        parentHash: block.parentHash,
+        proposer: block.proposer,
+        shard: block.shard,
+        deploys: block.deploys,
+        justifications: block.justifications,
+        postStateHash: block.postStateHash,
+        timestamp: block.timestamp,
+      }),
+    ),
+  );
   return NODES.map((n, i) => {
     const obs: NodeObservation = {
       nodeId: n.id,
@@ -188,18 +213,19 @@ export function observeBlock(
       probeIntegrity: true,
       ready: true,
       validatorState: "bonded",
+      validatorId: n.validatorId,
       currentEpoch: 913,
       lastFinalizedBlockNumber: block.height,
       latestBlockNumber: block.height + 3,
       blockHash: block.hash,
       parentHash: block.parentHash,
-      proposer: n.proposer,
+      proposer: block.proposer,
       signaturePresent: true,
-      justificationPresent: true,
+      justificationPresent: block.justifications.length > 0,
       justificationCount: block.justifications.length,
       malformedJustification: false,
       duplicateValidator: false,
-      payloadSha256: hexPrefixed(payload),
+      payloadSha256: payload,
       fullBlockAvailable: true,
       canonicalConsistent: true,
       observedStake: n.stake,
@@ -208,6 +234,7 @@ export function observeBlock(
     };
     if (opts?.lieNode === n.letter && opts.lieHash) {
       obs.blockHash = opts.lieHash;
+      obs.canonicalConsistent = false;
     }
     if (opts?.unreachable === n.letter) {
       obs.reachable = false;
@@ -222,7 +249,7 @@ export function observeBlock(
     if (opts?.duplicateProposer?.from === n.letter) {
       const onto = NODES.find((x) => x.letter === opts.duplicateProposer!.onto);
       if (onto) {
-        obs.proposer = onto.proposer;
+        obs.validatorId = onto.validatorId;
         obs.duplicateValidator = true;
       }
     }
@@ -250,7 +277,7 @@ export function crossNode(obs: NodeObservation[]): CrossNodeReport {
   const quorumObserved = agreeing >= quorumRequired;
   const ratio = total === 0 ? 0 : Math.round((agreeing / total) * 100) / 100;
   let status: Status = "PASS";
-  if (!heightAgreement || !hashAgreement) status = "FAIL";
+  if (!quorumObserved || !heightAgreement || !hashAgreement) status = "FAIL";
   else if (reachable.length < total) status = "WARN";
   return {
     targetCount: total,
@@ -266,49 +293,52 @@ export function crossNode(obs: NodeObservation[]): CrossNodeReport {
     conflictingNodes: reachable.length - agreeing,
     status,
     verificationBasis:
-      "Observed node-count agreement across configured RNodes. Not a stake-weighted Casper proof.",
+      "Observed node-count agreement across configured synthetic RNodes. Not a stake-weighted Casper proof.",
   };
 }
 
 export function casperInventory(obs: NodeObservation[], block: Block): CasperEvidence {
   const reachable = obs.filter((o) => o.reachable);
-  const dups = reachable.filter((o) => o.duplicateValidator).length;
+  const validators = new Map<string, number>();
+  for (const o of reachable) validators.set(o.validatorId, (validators.get(o.validatorId) ?? 0) + o.observedStake);
+  const duplicateValidatorCount = reachable.length - validators.size;
   const malformed = reachable.filter((o) => o.malformedJustification).length;
-  const missingJ = reachable.filter((o) => !o.justificationPresent).length;
-  const stake = reachable.reduce((s, o) => s + o.observedStake, 0);
-  const ok = dups === 0 && malformed === 0 && missingJ === 0;
+  const missingJ = reachable.filter((o) => !o.justificationPresent || o.justificationCount === 0).length;
+  const missingSignature = reachable.filter((o) => !o.signaturePresent).length;
+  const missingPayload = reachable.filter((o) => !o.fullBlockAvailable).length;
+  const canonicalBreak = reachable.filter((o) => !o.canonicalConsistent).length;
+  const stake = [...validators.values()].reduce((s, value) => s + value, 0);
+  const ok = duplicateValidatorCount === 0 && malformed === 0 && missingJ === 0 && missingSignature === 0 && missingPayload === 0 && canonicalBreak === 0;
   return {
-    evidenceAvailable: true,
-    protocolBlockShape: true,
-    validatorIdentityPresent: true,
-    stakeWeightPresent: true,
-    bondCount: 4,
+    evidenceAvailable: reachable.length > 0,
+    protocolBlockShape: Boolean(block.hash && block.parentHash && block.signature),
+    validatorIdentityPresent: reachable.every((o) => Boolean(o.validatorId)),
+    stakeWeightPresent: reachable.every((o) => Number.isFinite(o.observedStake) && o.observedStake >= 0),
+    bondCount: validators.size,
     totalObservedStake: stake,
-    duplicateValidatorCount: dups,
-    bondStructureValid: dups === 0,
+    duplicateValidatorCount,
+    bondStructureValid: duplicateValidatorCount === 0,
     justificationPresent: missingJ === 0,
     justificationCount: block.justifications.length,
     justificationStructureValid: malformed === 0,
     malformedJustificationCount: malformed,
-    equivocationSignal: dups > 0,
+    equivocationSignal: duplicateValidatorCount > 0,
     recognizedFields: [
       "blockHash",
       "parentHash",
       "proposer",
+      "validatorId",
       "justifications",
       "bonds",
       "signature",
     ],
     status: ok ? "PASS" : "FAIL",
     verificationBasis:
-      "Protocol-shaped Casper evidence inventory. Fields are recognized, not authenticated against the live RNode schema.",
+      "Protocol-shaped Casper evidence inventory. Fields are structurally checked against the synthetic fixture, not authenticated against a live RNode schema or cryptographically verified.",
   };
 }
 
-export function latticeAnalyze(
-  block: Block,
-  obs: NodeObservation[],
-): LatticeReport {
+export function latticeAnalyze(block: Block, obs: NodeObservation[]): LatticeReport {
   const N = 4;
   const f = 1;
   const Q = 2 * f + 1;
@@ -335,9 +365,7 @@ export function latticeAnalyze(
       rejectReason: reason,
     });
 
-    if (letter === "A") {
-      votes.push(mk("PrePrepare", true));
-    }
+    if (letter === "A") votes.push(mk("PrePrepare", true));
     if (!o.reachable) {
       votes.push(mk("Prepare", false, "replica unreachable — vote absent"));
       votes.push(mk("Commit", false, "replica unreachable — vote absent"));
