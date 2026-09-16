@@ -99,6 +99,7 @@ export interface LatticeVote {
   seq: number;
   digest: string;
   senderId: number;
+  validatorId: string;
   signature: string;
   accepted: boolean;
   rejectReason?: string;
@@ -118,6 +119,9 @@ export interface LatticeReport {
   preparedCertificate: boolean;
   committedCertificate: boolean;
   conflictingPrepare: boolean;
+  duplicateValidatorCount: number;
+  distinctPrepareValidators: number;
+  distinctCommitValidators: number;
   status: Status;
   verificationBasis: string;
   notClaimed: string;
@@ -284,7 +288,6 @@ export function crossNode(obs: NodeObservation[]): CrossNodeReport {
     reachableCount: reachable.length,
     agreeingNodes: agreeing,
     quorumRequired,
-    quorumObserved,
     agreementRatio: ratio,
     commonHeight,
     commonHash,
@@ -323,15 +326,7 @@ export function casperInventory(obs: NodeObservation[], block: Block): CasperEvi
     justificationStructureValid: malformed === 0,
     malformedJustificationCount: malformed,
     equivocationSignal: duplicateValidatorCount > 0,
-    recognizedFields: [
-      "blockHash",
-      "parentHash",
-      "proposer",
-      "validatorId",
-      "justifications",
-      "bonds",
-      "signature",
-    ],
+    recognizedFields: ["blockHash", "parentHash", "proposer", "validatorId", "justifications", "bonds", "signature"],
     status: ok ? "PASS" : "FAIL",
     verificationBasis:
       "Protocol-shaped Casper evidence inventory. Fields are structurally checked against the synthetic fixture, not authenticated against a live RNode schema or cryptographically verified.",
@@ -347,12 +342,21 @@ export function latticeAnalyze(block: Block, obs: NodeObservation[]): LatticeRep
   const primary = "replica-A";
   const honest = block.hash;
   const votes: LatticeVote[] = [];
+  const acceptedValidatorsByPhase: Record<PbftPhase, Set<string>> = {
+    PrePrepare: new Set(),
+    Prepare: new Set(),
+    Commit: new Set(),
+  };
 
   const replicas = ["A", "B", "C", "D"] as const;
   replicas.forEach((letter, senderId) => {
-    const o = obs.find((x) => x.letter === letter)!;
+    const o = obs.find((x) => x.letter === letter);
+    if (!o) return;
     const digestVote = o.reachable ? o.blockHash : honest;
     const conflicting = digestVote !== honest;
+    const duplicateIdentity = obs.some(
+      (candidate) => candidate.reachable && candidate.nodeId !== o.nodeId && candidate.validatorId === o.validatorId,
+    );
     const mk = (phase: PbftPhase, accepted: boolean, reason?: string): LatticeVote => ({
       replica: `replica-${letter}`,
       phase,
@@ -360,34 +364,60 @@ export function latticeAnalyze(block: Block, obs: NodeObservation[]): LatticeRep
       seq,
       digest: conflicting && phase !== "PrePrepare" ? digestVote : honest,
       senderId,
+      validatorId: o.validatorId,
       signature: `bls:${letter.toLowerCase()}:${shortHex(digest([phase, letter, digestVote]), 4, 4).slice(2)}`,
       accepted,
       rejectReason: reason,
     });
+    const accept = (phase: PbftPhase) => {
+      if (!o.reachable) {
+        votes.push(mk(phase, false, "replica unreachable — vote absent"));
+        return;
+      }
+      if (duplicateIdentity) {
+        votes.push(mk(phase, false, "duplicate validator identity — vote excluded from certificate"));
+        return;
+      }
+      if (conflicting && phase !== "PrePrepare") {
+        votes.push(mk(phase, false, "conflicting digest for (view, seq) — dropped"));
+        return;
+      }
+      if (acceptedValidatorsByPhase[phase].has(o.validatorId)) {
+        votes.push(mk(phase, false, "duplicate validator vote for certificate — excluded"));
+        return;
+      }
+      acceptedValidatorsByPhase[phase].add(o.validatorId);
+      votes.push(mk(phase, true));
+    };
 
-    if (letter === "A") votes.push(mk("PrePrepare", true));
-    if (!o.reachable) {
-      votes.push(mk("Prepare", false, "replica unreachable — vote absent"));
-      votes.push(mk("Commit", false, "replica unreachable — vote absent"));
-      return;
-    }
+    if (letter === "A") accept("PrePrepare");
+    accept("Prepare");
     if (conflicting) {
-      votes.push(mk("Prepare", false, "conflicting digest for (view, seq) — dropped"));
       votes.push(mk("Commit", false, "no prepared certificate for conflicting digest"));
-      return;
+    } else {
+      accept("Commit");
     }
-    votes.push(mk("Prepare", true));
-    votes.push(mk("Commit", true));
   });
 
-  const preparedCount = votes.filter((v) => v.phase === "Prepare" && v.accepted && v.digest === honest).length;
-  const committedCount = votes.filter((v) => v.phase === "Commit" && v.accepted && v.digest === honest).length;
-  const conflictingPrepare = votes.some(
-    (v) => v.phase === "Prepare" && v.digest !== honest && !v.accepted,
+  const preparedValidators = new Set(
+    votes.filter((v) => v.phase === "Prepare" && v.accepted && v.digest === honest).map((v) => v.validatorId),
   );
+  const committedValidators = new Set(
+    votes.filter((v) => v.phase === "Commit" && v.accepted && v.digest === honest).map((v) => v.validatorId),
+  );
+  const preparedCount = preparedValidators.size;
+  const committedCount = committedValidators.size;
+  const conflictingPrepare = votes.some((v) => v.phase === "Prepare" && v.digest !== honest && !v.accepted);
+  const duplicateValidatorCount = obs.filter((o) => o.reachable).length - new Set(obs.filter((o) => o.reachable).map((o) => o.validatorId)).size;
   const preparedCertificate = preparedCount >= Q;
   const committedCertificate = committedCount >= Q;
-  const status: Status = committedCertificate ? "PASS" : preparedCertificate ? "WARN" : "FAIL";
+  const status: Status = duplicateValidatorCount > 0
+    ? "FAIL"
+    : committedCertificate
+      ? "PASS"
+      : preparedCertificate
+        ? "WARN"
+        : "FAIL";
 
   return {
     n: N,
@@ -403,8 +433,11 @@ export function latticeAnalyze(block: Block, obs: NodeObservation[]): LatticeRep
     preparedCertificate,
     committedCertificate,
     conflictingPrepare,
+    duplicateValidatorCount,
+    distinctPrepareValidators: preparedValidators.size,
+    distinctCommitValidators: committedValidators.size,
     status,
-    verificationBasis: `PBFT-shaped analysis on N=${N}, f=${f}, Q=${Q}. PreparedCertificate requires ≥ ${Q} Prepare votes on the same digest.`,
+    verificationBasis: `PBFT-shaped analysis on N=${N}, f=${f}, Q=${Q}. Certificates count distinct validator identities only; duplicate identities are excluded.`,
     notClaimed:
       "Sovereign Lattice does not claim that RChain Casper is PBFT, nor that these BLS placeholders are pairing-verified.",
   };
