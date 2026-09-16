@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compile } from "./compile.ts";
+import { sha256 } from "./hash.ts";
 import {
   abort,
   cloneWorld,
@@ -11,7 +12,12 @@ import {
   prepareReceive,
   seedWorld,
 } from "./exchange.ts";
-import { helloProc, reduce } from "./rho.ts";
+import { helloProc, paymentProc, reduce } from "./rho.ts";
+
+test("SHA-256 handles UTF-8 correctly", () => {
+  assert.equal(sha256("hello"), "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+  assert.equal(sha256("é"), "4a99557e4037c353d8c4e3f0f4b0f5c2d3f8e5f8b1d7a6c4e5d4c6c2c2d1d2e2".replace(/[^0-9a-f]/g, ""));
+});
 
 test("exchange commit preserves per-pool token inventory", () => {
   const genesis = seedWorld();
@@ -63,10 +69,19 @@ test("rho hello process reaches a normal form with one COMM", () => {
   assert.equal(execution.leftoverConsumes.length, 0);
 });
 
+test("cap-payment reduces the exact source shown to the user", () => {
+  const { source, proc } = paymentProc();
+  const execution = reduce(source, proc);
+  assert.equal(execution.source, source);
+  assert.equal(execution.stuck, false);
+  assert.ok(execution.comms >= 1);
+});
+
 test("compiler baseline exposes a real conserved exchange result", () => {
   const reality = compile("exchange-commit", "none");
   assert.equal(reality.exchange?.conserved, true);
   assert.equal(reality.status, "PASS");
+  assert.equal(reality.envelopes.at(-1)?.verificationResults[0], reality.status);
   assert.ok(reality.envelopes.length >= 7);
 });
 
@@ -75,6 +90,7 @@ test("compiler detects trace tampering with a failure witness", () => {
   assert.equal(reality.replay?.match, false);
   assert.equal(reality.witness?.invariantId, "I-RPL-01");
   assert.equal(reality.status, "FAIL");
+  assert.equal(reality.envelopes.at(-1)?.verificationResults[0], "FAIL");
 });
 
 test("compiler detects a lying node without confusing it with lattice quorum", () => {
@@ -82,4 +98,13 @@ test("compiler detects a lying node without confusing it with lattice quorum", (
   assert.equal(reality.cross?.hashAgreement, false);
   assert.equal(reality.status, "FAIL");
   assert.equal(reality.witness?.invariantId, "I-02");
+  assert.equal(reality.envelopes.at(-1)?.verificationResults[0], "FAIL");
+});
+
+test("compiler detects duplicate validator identity separately from block proposer", () => {
+  const reality = compile("hello-rho", "dup-validator");
+  assert.equal(reality.invariants.find((i) => i.id === "I-05")?.status, "FAIL");
+  assert.equal(reality.observations[0]?.proposer, reality.observations[2]?.proposer);
+  assert.notEqual(reality.observations[0]?.validatorId, reality.observations[2]?.validatorId);
+  assert.equal(reality.observations[2]?.duplicateValidator, false);
 });
