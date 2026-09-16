@@ -5,5 +5,5 @@ export function env(key: string): string | undefined {
 
 /** True when the app is running without a deployed project identity. */
 export function isWorkspacePreview(): boolean {
-  return !env("APP_PROJECT_ID");
+  return !env("GROK_PROJECT_ID");
 }
