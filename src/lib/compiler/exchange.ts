@@ -1,5 +1,5 @@
 /** QuantumOS pooled token exchange — prepare → prepareReceive → commit/abort.
- *  Verbs and conservation follow rchain-community/quantum-os ExchangeDemo.md.
+ * Verbs and conservation follow rchain-community/quantum-os ExchangeDemo.md.
  */
 
 export type Side = "A" | "B";
@@ -124,7 +124,7 @@ export function seedWorld(): ExchangeWorld {
     tokenA: "rho:id:coin4a",
     tokenB: "rho:id:bux9k7",
     rate: 500_000,
-    reserveA: 0,
+    reserveA: 100,
     reserveB: 500,
     owner: "alice",
     links: { toParis: { exchangeUri: "rho:id:paris", shard: "shard-B" } },
@@ -136,7 +136,7 @@ export function seedWorld(): ExchangeWorld {
     tokenA: "rho:id:bux9k7",
     tokenB: "rho:id:gbp1",
     rate: 840_000,
-    reserveA: 0,
+    reserveA: 100,
     reserveB: 200,
     owner: "paris",
     links: { toAlice: { exchangeUri: "rho:id:9xm7c", shard: "shard-A" } },
@@ -146,7 +146,15 @@ export function seedWorld(): ExchangeWorld {
 }
 
 export function prepare(w: ExchangeWorld, poolId: string, actor: string, txId: string, from: Side, amount: number, expiry: number): boolean {
-  const pool = w.pools[poolId]!;
+  const pool = w.pools[poolId];
+  if (!pool) {
+    push(w, "prepare", actor, poolId, false, "unknown pool", "unknown pool");
+    return false;
+  }
+  if ((w.txs[txId] ?? []).some((t) => t.poolId === poolId && t.status === "prepared")) {
+    push(w, "prepare", actor, poolId, false, "transaction already prepared", "transaction already prepared");
+    return false;
+  }
   const snap = { reserveA: pool.reserveA, reserveB: pool.reserveB, bal: { ...bal(pool, actor) } };
   const r = swap(pool, actor, from, amount);
   if ("err" in r) {
@@ -161,25 +169,35 @@ export function prepare(w: ExchangeWorld, poolId: string, actor: string, txId: s
 }
 
 export function prepareReceive(w: ExchangeWorld, poolId: string, actor: string, txId: string, side: Side, amount: number, expiry: number, link: string): boolean {
-  const pool = w.pools[poolId]!;
+  const pool = w.pools[poolId];
+  if (!pool) {
+    push(w, "prepareReceive", actor, poolId, false, "unknown pool", "unknown pool");
+    return false;
+  }
   if (!pool.links[link]) {
     push(w, "prepareReceive", actor, poolId, false, `no such link ${link}`, "no such link");
     return false;
   }
-  const b = { ...bal(pool, actor) };
-  if (side === "A") b.a += amount;
-  else b.b += amount;
-  setBal(pool, actor, b);
-  const snap = { reserveA: pool.reserveA, reserveB: pool.reserveB, bal: { ...b } };
+  if ((w.txs[txId] ?? []).some((t) => t.poolId === poolId && t.status === "prepared")) {
+    push(w, "prepareReceive", actor, poolId, false, "transaction already prepared", "transaction already prepared");
+    return false;
+  }
+
+  const before = { ...bal(pool, actor) };
+  const credited = { ...before };
+  if (side === "A") credited.a += amount;
+  else credited.b += amount;
+  setBal(pool, actor, credited);
+
   const r = swap(pool, actor, side, amount);
   if ("err" in r) {
-    if (side === "A") b.a -= amount;
-    else b.b -= amount;
-    setBal(pool, actor, b);
+    setBal(pool, actor, before);
     push(w, "prepareReceive", actor, poolId, false, r.err, r.err);
     return false;
   }
+
   const to: Side = side === "A" ? "B" : "A";
+  const snap = { reserveA: pool.reserveA, reserveB: pool.reserveB, bal: { ...before } };
   (w.txs[txId] ??= []).push({ txId, poolId, holder: actor, fromSide: side, amount, got: r.got, toSide: to, expiryBlock: expiry, status: "prepared", snapshot: snap });
   push(w, "prepareReceive", actor, poolId, true, `prepared remote ${txId}`, { prepared: txId, got: r.got, toSide: to, expiry });
   return true;
@@ -202,7 +220,18 @@ export function abort(w: ExchangeWorld, poolId: string, actor: string, txId: str
   if (rec.status === "aborted") { push(w, "abort", actor, poolId, true, "idempotent abort", { aborted: txId }); return true; }
   if (rec.status === "committed") { push(w, "abort", actor, poolId, false, "already committed", "already committed"); return false; }
   if (rec.holder !== actor && height <= rec.expiryBlock) { push(w, "abort", actor, poolId, false, "not holder; not yet expired", "not holder; not yet expired"); return false; }
-  const pool = w.pools[poolId]!;
+  const pool = w.pools[poolId];
+  if (!pool) { push(w, "abort", actor, poolId, false, "unknown pool", "unknown pool"); return false; }
+  const b = bal(pool, rec.holder);
+  const restored = { ...b };
+  if (rec.fromSide === "A" && restored.b < rec.got) {
+    push(w, "abort", actor, poolId, false, "cannot restore: output balance is insufficient", "cannot restore");
+    return false;
+  }
+  if (rec.fromSide === "B" && restored.a < rec.got) {
+    push(w, "abort", actor, poolId, false, "cannot restore: output balance is insufficient", "cannot restore");
+    return false;
+  }
   unswap(pool, rec.holder, rec.fromSide, rec.amount, rec.got);
   rec.status = "aborted";
   push(w, "abort", actor, poolId, true, `aborted ${txId} — reserves restored`, { aborted: txId });
@@ -222,8 +251,16 @@ export function conservationReport(w: ExchangeWorld, genesis: ExchangeWorld): Co
   let conserved = true;
   const reasons: string[] = [];
   for (const id of Object.keys(genesis.pools)) {
-    const before = totals(genesis.pools[id]!);
-    const after = totals(w.pools[id]!);
+    const beforePool = genesis.pools[id];
+    const afterPool = w.pools[id];
+    if (!afterPool) {
+      conserved = false;
+      perPool[id] = { a: false, b: false };
+      reasons.push(`${id}: pool missing after execution`);
+      continue;
+    }
+    const before = totals(beforePool!);
+    const after = totals(afterPool);
     const a = before.a === after.a;
     const b = before.b === after.b;
     perPool[id] = { a, b };
