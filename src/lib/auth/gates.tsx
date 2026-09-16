@@ -1,12 +1,8 @@
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Navigate } from "@tanstack/react-router";
 import { AUTH_PROVIDERS, authEnabled, signIn, signOut } from "./client";
-import { hasGateSessionMarker } from "./gate-session-marker";
 import { resolveSignInGateState } from "./sign-in-gate";
 import { useCurrentUser, useCurrentUserState } from "./use-current-user";
-
-const subscribeToNothing = () => () => {};
-const noGateSessionOnServer = () => false;
 
 export const SIGN_IN_PATH = "/login";
 
@@ -59,11 +55,6 @@ export function SignInButtons() {
 export function UserButton() {
   const user = useCurrentUser();
   const [signingOut, setSigningOut] = useState(false);
-  const gateSession = useSyncExternalStore(
-    subscribeToNothing,
-    hasGateSessionMarker,
-    noGateSessionOnServer,
-  );
   if (!user) return null;
   const label = user.displayName ?? user.primaryEmail ?? "Account";
   return (
@@ -76,7 +67,7 @@ export function UserButton() {
         </span>
       )}
       <span className="text-sm font-medium">{label}</span>
-      {authEnabled && !gateSession && (
+      {authEnabled && (
         <button
           type="button"
           disabled={signingOut}
