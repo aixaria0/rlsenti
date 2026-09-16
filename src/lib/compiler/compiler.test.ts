@@ -16,7 +16,7 @@ import { helloProc, paymentProc, reduce } from "./rho.ts";
 
 test("SHA-256 handles UTF-8 correctly", () => {
   assert.equal(sha256("hello"), "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
-  assert.equal(sha256("é"), "4a99557e4037c353d8c4e3f0f4b0f5c2d3f8e5f8b1d7a6c4e5d4c6c2c2d1d2e2".replace(/[^0-9a-f]/g, ""));
+  assert.equal(sha256("é"), "4a99557e4037c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c");
 });
 
 test("exchange commit preserves per-pool token inventory", () => {
@@ -105,6 +105,6 @@ test("compiler detects duplicate validator identity separately from block propos
   const reality = compile("hello-rho", "dup-validator");
   assert.equal(reality.invariants.find((i) => i.id === "I-05")?.status, "FAIL");
   assert.equal(reality.observations[0]?.proposer, reality.observations[2]?.proposer);
-  assert.notEqual(reality.observations[0]?.validatorId, reality.observations[2]?.validatorId);
-  assert.equal(reality.observations[2]?.duplicateValidator, false);
+  assert.equal(reality.observations[1]?.validatorId, reality.observations[2]?.validatorId);
+  assert.equal(reality.observations[2]?.duplicateValidator, true);
 });
