@@ -2,29 +2,31 @@
 
 ## RChain Reality & Sentinel Workbench
 
-RLSenti is an experimental verification workbench for tracing a distributed event from its originating process through execution, block evidence, and verification.
+RLSenti is an experimental verification workbench for tracing a distributed event from its originating process through execution, block evidence, observation, and verification.
 
-The project is designed around a simple provenance chain:
+The compiler is organized as a provenance pipeline:
 
 ```text
 Event
+  → QLF-oriented certificate
   → Rholang Process
   → Execution Trace
-  → RChain Block
-  → Sentinel Evidence
+  → RChain-like Block Evidence
+  → Sentinel Observation
+  → Sovereign Lattice Analysis
   → Verification Result
 ```
 
-The current implementation is a self-contained, deterministic workbench. It can compile synthetic scenarios, derive hashes and evidence, model cross-shard execution, inject adversarial mutations, and expose the resulting provenance as a linked event-envelope chain.
+The current implementation is a self-contained, deterministic workbench. It compiles synthetic scenarios, derives domain-separated hashes and evidence, models exchange state, injects adversarial mutations, and exposes the resulting provenance as a linked event-envelope chain.
 
 It is intentionally structured so that synthetic sources can later be replaced by real RChain/Sentinel adapters without redesigning the verification pipeline.
 
 ## What exists today
 
-The compiler layer currently models several scenarios:
+The compiler currently models several scenarios:
 
-- `exchange-commit` — cross-shard atomic exchange
-- `exchange-abort` — cross-shard abort
+- `exchange-commit` — two-leg cross-shard exchange with prepare/prepareReceive/commit state transitions and conservation checks
+- `exchange-abort` — prepared-leg abort with exact local restoration
 - `hello-rho` — ρ-calculus communication
 - `cap-payment` — capability-gated payment
 
@@ -33,11 +35,11 @@ Adversarial mutations include:
 - validator lies
 - dropped capabilities
 - forced aborts
-- duplicated validators
+- duplicated validator identities
 - missing justification
 - tampered execution traces
 
-The workbench also contains explicit layers for Rholang reduction, QLF-oriented certificates, execution observation, hashing, cross-shard exchange state, and provenance envelopes.
+The workbench also contains explicit layers for Rholang reduction, QLF-oriented certificates, execution observation, hashing, exchange state, cross-node checks, PBFT-shaped Sovereign Lattice analysis, and provenance envelopes.
 
 ## Architecture
 
@@ -55,15 +57,18 @@ The workbench also contains explicit layers for Rholang reduction, QLF-oriented 
                               │
           ┌───────────────────┼───────────────────┐
           ▼                   ▼                   ▼
-   Rholang / ρ          QLF evidence       Exchange state
-   reduction            / certificates      / execution
+   Rholang / ρ          QLF-oriented       Exchange state
+   reduction             certificate         / execution
           │                   │                   │
           └───────────────────┼───────────────────┘
                               ▼
-                    Observation / evidence
+                    Block / node evidence
                               │
                               ▼
                     Cross-node verification
+                              │
+                              ▼
+                  Sovereign Lattice analysis
                               │
                               ▼
                     Event Envelope Chain
@@ -75,7 +80,7 @@ The workbench also contains explicit layers for Rholang reduction, QLF-oriented 
                     Verification / Witness
 ```
 
-The central compilation path is implemented in `lib/compiler/compile.ts`, with supporting modules for exchange execution, Rholang reduction, observation, hashing, QLF-oriented data, and shared types.
+The central compilation path is implemented in `src/lib/compiler/compile.ts`, with supporting modules for exchange execution, the deterministic Rholang subset, observation, hashing, QLF-oriented data, and shared types.
 
 ## Determinism and provenance
 
@@ -89,7 +94,7 @@ The repository currently uses deterministic synthetic RChain-like data for its s
 
 Therefore, RLSenti should currently be understood as a **verification/provenance workbench and integration-ready prototype**, not as a live RChain Sentinel client.
 
-The intended next architectural boundary is an adapter layer:
+The intended architectural boundary is an adapter layer:
 
 ```text
 Real RChain / Sentinel sources
@@ -108,6 +113,21 @@ Real RChain / Sentinel sources
 ```
 
 Keeping this boundary explicit prevents synthetic fixtures from being mistaken for network evidence while allowing the existing compiler and UI to evolve toward real integration.
+
+## Verification boundaries
+
+The workbench deliberately distinguishes implemented checks from protocol-level claims it does not yet make:
+
+- Exchange conservation is checked against a deterministic in-memory world. The two legs are committed sequentially; this is **not** claimed to be a distributed atomic transaction protocol.
+- Rholang reduction implements a deterministic subset sufficient for the current scenarios; it is **not** a complete Rholang evaluator.
+- The QLF layer provides event-level certificate data; it is **not** a proof of RChain finality.
+- Cross-node checks use configured synthetic node observations and node-count quorum; they are **not** stake-weighted Casper finality.
+- Sovereign Lattice analysis is PBFT-shaped and counts distinct validator identities for certificates; it does **not** claim that RChain Casper is PBFT.
+- BLS values in the synthetic fixture are deterministic placeholders; they are **not** pairing-verified signatures.
+- The current trace-tamper path is an adversarial mutation harness, not an independent replay engine.
+- No live RNode or Sentinel endpoint is contacted by the compiler today.
+
+These boundaries are part of the verification model rather than caveats hidden outside it: failure witnesses and verification reports should state the evidence basis used for each result.
 
 ## Development
 
@@ -129,9 +149,9 @@ npm run build
 
 ## Project status
 
-RLSenti is an active experimental project. The present milestone focuses on the verification workbench, deterministic evidence generation, adversarial testing, and provenance visualization.
+RLSenti is an active experimental project. The present milestone focuses on deterministic evidence generation, adversarial testing, provenance visualization, and explicit verification boundaries.
 
-Future work can connect the normalized evidence model to real RChain/Sentinel sources, strengthen the formal verification boundary, and add replayable evidence bundles suitable for independent verification.
+Future work can connect the normalized evidence model to real RChain/Sentinel sources, strengthen the formal verification boundary, implement a true deterministic replay engine, bind block state hashes to the exchange state, and add replayable evidence bundles suitable for independent verification.
 
 ## Design principles
 
@@ -141,6 +161,7 @@ Future work can connect the normalized evidence model to real RChain/Sentinel so
 4. **Explicit provenance.** Every important artifact should be linkable to its parent evidence.
 5. **Separation of concerns.** Source adapters, compilation, verification, and presentation remain distinct layers.
 6. **Honest integration boundaries.** Synthetic data is clearly separated from future live network evidence.
+7. **Defensible claims.** Every protocol-level statement should have an explicit implementation basis or an explicit non-claim.
 
 ## License
 
