@@ -4,7 +4,17 @@
 
 RLSenti is an experimental verification workbench for tracing a distributed event from its originating process through execution, block evidence, observation, and verification.
 
-The compiler is organized as a provenance pipeline:
+## Live Workbench
+
+**Open the interactive RChain Reality & Sentinel Workbench:**
+
+https://aixaria0.github.io/rlsenti/reality.html
+
+The workbench exposes the provenance chain, Reality Diff, semantic diff, proof-carrying execution, replay, counterfactuals, adversarial evidence challenges, QLF linkage, adapter status, formal invariant traces, and the integrated demo.
+
+The GitHub Pages interface is the visual/demo surface. The Rust/Axum service in this repository is the backend/API surface for live integration.
+
+## Provenance pipeline
 
 ```text
 Event
