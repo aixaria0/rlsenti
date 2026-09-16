@@ -68,22 +68,25 @@ const oauthPlugin =
       })
     : null;
 
+const configuredSecret = env("BETTER_AUTH_SECRET");
 const globalAuthRef = globalThis as typeof globalThis & {
   __rlsentiAuthSecret__?: string;
 };
 const authSecret = () => {
+  if (configuredSecret) return configuredSecret;
+  if (authConfigured && process.env.NODE_ENV === "production") {
+    throw new Error("BETTER_AUTH_SECRET must be configured when authentication is enabled in production");
+  }
   globalAuthRef.__rlsentiAuthSecret__ ??= randomBytes(32).toString("hex");
   return globalAuthRef.__rlsentiAuthSecret__;
 };
 
 export const auth = betterAuth({
   baseURL,
-  secret: env("BETTER_AUTH_SECRET") ?? authSecret(),
+  secret: authSecret(),
   database,
   trustedOrigins,
-  ...(emailAndPasswordEnabled
-    ? { emailAndPassword: { enabled: true } }
-    : {}),
+  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
   account: {
     encryptOAuthTokens: true,
     accountLinking: {
