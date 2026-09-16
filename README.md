@@ -8,7 +8,7 @@ RLSenti is an experimental verification workbench for tracing a distributed even
 
 **Open the interactive RChain Reality & Sentinel Workbench:**
 
-https://aixaria0.github.io/rlsenti/reality.html
+https://rchain-trace-buddy.lovable.app/replay
 
 The workbench exposes the provenance chain, Reality Diff, semantic diff, proof-carrying execution, replay, counterfactuals, adversarial evidence challenges, QLF linkage, adapter status, formal invariant traces, and the integrated demo.
 
