@@ -4,63 +4,28 @@ export type Name =
   | { k: "uf"; id: string }
   | { k: "uri"; uri: string }
   | { k: "var"; id: string };
-
 export type Ground = string | number | boolean;
-
 export type Proc =
   | { k: "0" }
   | { k: "|"; ps: Proc[] }
   | { k: "new"; ns: string[]; p: Proc }
   | { k: "send"; ch: Name; data: Ground[] }
   | { k: "for"; ch: Name; binds: string[]; p: Proc };
-
-export interface Produce {
-  id: string;
-  ch: string;
-  data: Ground[];
-}
-export interface Consume {
-  id: string;
-  ch: string;
-  binds: string[];
-  body: Proc;
-}
-
-export interface ReductionStep {
-  n: number;
-  rule: "NEW" | "COMM" | "PAR" | "DONE" | "STUCK";
-  description: string;
-  channel?: string;
-  data?: Ground[];
-  continuation?: string;
-  produces: number;
-  consumes: number;
-}
-
-export interface Execution {
-  source: string;
-  normalized: string;
-  steps: ReductionStep[];
-  leftoverProduces: Produce[];
-  leftoverConsumes: Consume[];
-  comms: number;
-  stuck: boolean;
-  stateHash: string;
-  traceHash: string;
-}
+export interface Produce { id: string; ch: string; data: Ground[]; }
+export interface Consume { id: string; ch: string; binds: string[]; body: Proc; }
+export interface ReductionStep { n: number; rule: "NEW" | "COMM" | "PAR" | "DONE" | "STUCK"; description: string; channel?: string; data?: Ground[]; continuation?: string; produces: number; consumes: number; }
+export interface Execution { source: string; normalized: string; steps: ReductionStep[]; leftoverProduces: Produce[]; leftoverConsumes: Consume[]; comms: number; stuck: boolean; stateHash: string; traceHash: string; }
 
 function chKey(n: Name, env: Map<string, string>): string {
   if (n.k === "uf") return `@${n.id}`;
   if (n.k === "uri") return n.uri;
   return env.get(n.id) ?? `?${n.id}`;
 }
-
 function flatten(p: Proc): Proc[] {
   if (p.k === "0") return [];
   if (p.k === "|") return p.ps.flatMap(flatten);
   return [p];
 }
-
 function pretty(p: Proc): string {
   switch (p.k) {
     case "0": return "Nil";
@@ -70,28 +35,16 @@ function pretty(p: Proc): string {
     case "for": return `for (${p.binds.map((b) => `@${b}`).join(", ")} <- ${showName(p.ch)}) { ${pretty(p.p)} }`;
   }
 }
-
 function showName(n: Name): string {
   if (n.k === "uf") return `@${n.id}`;
   if (n.k === "uri") return `\`${n.uri}\``;
   return n.id;
 }
-
-function showG(g: Ground): string {
-  return typeof g === "string" ? JSON.stringify(g) : String(g);
-}
-
+function showG(g: Ground): string { return typeof g === "string" ? JSON.stringify(g) : String(g); }
 let seq = 0;
-function nid(prefix: string) {
-  seq += 1;
-  return `${prefix}${seq.toString(16).padStart(3, "0")}`;
-}
+function nid(prefix: string) { seq += 1; return `${prefix}${seq.toString(16).padStart(3, "0")}`; }
 
-/**
- * Deterministic reducer for the small ρ-calculus subset represented by Proc.
- * It models NEW name allocation, parallel flattening and COMM matching.
- * It is intentionally not presented as a full rchain-rust evaluator.
- */
+/** Deterministic reducer for the small ρ-calculus subset represented by Proc. */
 export function reduce(source: string, proc: Proc): Execution {
   seq = 0;
   const steps: ReductionStep[] = [];
@@ -100,9 +53,7 @@ export function reduce(source: string, proc: Proc): Execution {
   let env = new Map<string, string>();
   let active = flatten(proc);
   let comms = 0;
-
   const snapshot = () => ({ produces: produces.length, consumes: consumes.length });
-
   let guard = 0;
   while (active.length && guard++ < 64) {
     const p = active.shift()!;
@@ -114,20 +65,13 @@ export function reduce(source: string, proc: Proc): Execution {
       active.push(...flatten(subst(p.p, env)));
       continue;
     }
-    if (p.k === "send") {
-      produces.push({ id: nid("p"), ch: chKey(p.ch, env), data: p.data });
-      continue;
-    }
-    if (p.k === "for") {
-      consumes.push({ id: nid("c"), ch: chKey(p.ch, env), binds: p.binds, body: p.p });
-      continue;
-    }
+    if (p.k === "send") { produces.push({ id: nid("p"), ch: chKey(p.ch, env), data: p.data }); continue; }
+    if (p.k === "for") { consumes.push({ id: nid("c"), ch: chKey(p.ch, env), binds: p.binds, body: p.p }); continue; }
     if (p.k === "|") {
       active.push(...flatten(p));
       steps.push({ n: steps.length, rule: "PAR", description: "flatten parallel composition", ...snapshot() });
     }
   }
-
   let progressed = true;
   while (progressed) {
     progressed = false;
@@ -140,15 +84,7 @@ export function reduce(source: string, proc: Proc): Execution {
       consumes.splice(ci, 1);
       comms += 1;
       const bound = substGround(c.body, c.binds, pr.data);
-      steps.push({
-        n: steps.length,
-        rule: "COMM",
-        description: `COMM on ${c.ch} — produce matched consume`,
-        channel: c.ch,
-        data: pr.data,
-        continuation: pretty(bound),
-        ...snapshot(),
-      });
+      steps.push({ n: steps.length, rule: "COMM", description: `COMM on ${c.ch} — produce matched consume`, channel: c.ch, data: pr.data, continuation: pretty(bound), ...snapshot() });
       active = flatten(bound);
       while (active.length) {
         const q = active.shift()!;
@@ -166,39 +102,10 @@ export function reduce(source: string, proc: Proc): Execution {
       break;
     }
   }
-
   const stuck = produces.length > 0 && consumes.length > 0;
-  steps.push({
-    n: steps.length,
-    rule: stuck ? "STUCK" : "DONE",
-    description: stuck ? "no further COMM; leftover produce/consume" : `normal form — ${comms} COMM reduction(s)`,
-    produces: produces.length,
-    consumes: consumes.length,
-  });
-
-  const stateHash = hexPrefixed(
-    digest([
-      "state-v2",
-      produces.map((p) => [p.ch, p.data]),
-      consumes.map((c) => [c.ch, c.binds, pretty(c.body)]),
-    ]),
-  );
-  const traceHash = hexPrefixed(
-    digest([
-      "trace-v2",
-      ...steps.map((s) => ({
-        n: s.n,
-        rule: s.rule,
-        description: s.description,
-        channel: s.channel ?? null,
-        data: s.data ?? null,
-        continuation: s.continuation ?? null,
-        produces: s.produces,
-        consumes: s.consumes,
-      })),
-    ]),
-  );
-
+  steps.push({ n: steps.length, rule: stuck ? "STUCK" : "DONE", description: stuck ? "no further COMM; leftover produce/consume" : `normal form — ${comms} COMM reduction(s)`, produces: produces.length, consumes: consumes.length });
+  const stateHash = hexPrefixed(digest(["state-v2", produces.map((p) => [p.ch, p.data]), consumes.map((c) => [c.ch, c.binds, pretty(c.body)])]));
+  const traceHash = hexPrefixed(digest(["trace-v2", ...steps.map((s) => ({ n: s.n, rule: s.rule, description: s.description, channel: s.channel ?? null, data: s.data ?? null, continuation: s.continuation ?? null, produces: s.produces, consumes: s.consumes }))]));
   return { source, normalized: pretty(proc), steps, leftoverProduces: produces, leftoverConsumes: consumes, comms, stuck, stateHash, traceHash };
 }
 
@@ -218,27 +125,17 @@ function subst(p: Proc, env: Map<string, string>): Proc {
     case "for": return { k: "for", ch: name(p.ch), binds: p.binds, p: subst(p.p, env) };
   }
 }
-
-function substGround(p: Proc, binds: string[], data: Ground[]): Proc {
-  // The current Proc model stores binds but does not represent ground-value variables.
-  // Preserve the continuation exactly rather than pretending substitution is implemented.
-  void binds;
-  void data;
-  return p;
-}
+function substGround(p: Proc, binds: string[], data: Ground[]): Proc { void binds; void data; return p; }
 
 export function helloProc(): { source: string; proc: Proc } {
   const source = `new ch in {
   ch!("hello")
   | for (@msg <- ch) { Nil }
 }`;
-  const proc: Proc = {
-    k: "new", ns: ["ch"],
-    p: { k: "|", ps: [
-      { k: "send", ch: { k: "var", id: "ch" }, data: ["hello"] },
-      { k: "for", ch: { k: "var", id: "ch" }, binds: ["msg"], p: { k: "0" } },
-    ] },
-  };
+  const proc: Proc = { k: "new", ns: ["ch"], p: { k: "|", ps: [
+    { k: "send", ch: { k: "var", id: "ch" }, data: ["hello"] },
+    { k: "for", ch: { k: "var", id: "ch" }, binds: ["msg"], p: { k: "0" } },
+  ] } };
   return { source, proc };
 }
 
@@ -256,7 +153,10 @@ export function paymentProc(): { source: string; proc: Proc } {
   const source = `new purse, ack in {
   purse!("authorize", "payment-authorized")
   | for (@ok <- purse) {
-    purse!("transfer", 20, "alice") | for (@rcpt <- ack) { Nil }
+    purse!("transfer", 20, "alice")
+    | for (@transfer <- purse) {
+      ack!("receipt") | for (@rcpt <- ack) { Nil }
+    }
   }
 }`;
   const purse: Name = { k: "var", id: "purse" };
@@ -265,12 +165,13 @@ export function paymentProc(): { source: string; proc: Proc } {
     k: "new", ns: ["purse", "ack"],
     p: { k: "|", ps: [
       { k: "send", ch: purse, data: ["authorize", "payment-authorized"] },
-      { k: "for", ch: purse, binds: ["ok"], p: {
-        k: "|", ps: [
-          { k: "send", ch: purse, data: ["transfer", 20, "alice"] },
+      { k: "for", ch: purse, binds: ["ok"], p: { k: "|", ps: [
+        { k: "send", ch: purse, data: ["transfer", 20, "alice"] },
+        { k: "for", ch: purse, binds: ["transfer"], p: { k: "|", ps: [
+          { k: "send", ch: ack, data: ["receipt"] },
           { k: "for", ch: ack, binds: ["rcpt"], p: { k: "0" } },
-        ],
-      } },
+        ] } },
+      ] } },
     ] },
   };
   return { source, proc };
