@@ -1,4 +1,4 @@
-/** Synchronous SHA-256. Browser + SSR safe; no SubtleCrypto. */
+/** Deterministic SHA-256 primitives for browser + SSR execution. */
 
 function rotr(n: number, x: number) {
   return (x >>> n) | (x << (32 - n));
@@ -22,17 +22,11 @@ const H0 = [
 ];
 
 export function sha256(message: string): string {
-  const bytes: number[] = [];
-  for (let i = 0; i < message.length; i++) {
-    const c = message.charCodeAt(i);
-    if (c < 0x80) bytes.push(c);
-    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
-    else bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
-  }
+  const bytes = Array.from(new TextEncoder().encode(message));
   const bitLen = bytes.length * 8;
   bytes.push(0x80);
   while (bytes.length % 64 !== 56) bytes.push(0);
-  for (let i = 7; i >= 0; i--) bytes.push((bitLen / 2 ** (i * 8)) & 0xff);
+  for (let i = 7; i >= 0; i--) bytes.push(Math.floor(bitLen / 2 ** (i * 8)) & 0xff);
 
   const h = H0.slice();
   const w = new Uint32Array(64);
@@ -83,8 +77,21 @@ export function sha256(message: string): string {
   return h.map((x) => x.toString(16).padStart(8, "0")).join("");
 }
 
+/**
+ * Hash a typed sequence rather than joining raw values with a delimiter.
+ * This prevents delimiter-collision cases such as ["a|b", "c"] and
+ * ["a", "b", "c"] producing the same preimage.
+ */
 export function digest(parts: unknown[]): string {
-  return sha256(parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join("|"));
+  const encoded = parts.map((part) => {
+    if (part === null) return ["null", null];
+    if (typeof part === "string") return ["string", part];
+    if (typeof part === "number") return ["number", part];
+    if (typeof part === "boolean") return ["boolean", part];
+    if (part === undefined) return ["undefined", null];
+    return ["json", part];
+  });
+  return sha256(JSON.stringify(encoded));
 }
 
 export function hexPrefixed(hex: string): string {
