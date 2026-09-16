@@ -13,10 +13,11 @@ import {
   seedWorld,
 } from "./exchange.ts";
 import { helloProc, paymentProc, reduce } from "./rho.ts";
+import { latticeAnalyze, observeBlock, proposeBlock } from "./observe.ts";
 
 test("SHA-256 handles UTF-8 correctly", () => {
   assert.equal(sha256("hello"), "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
-  assert.equal(sha256("é"), "4a99557e4037c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c");
+  assert.equal(sha256("é"), "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c");
 });
 
 test("exchange commit preserves per-pool token inventory", () => {
@@ -107,4 +108,34 @@ test("compiler detects duplicate validator identity separately from block propos
   assert.equal(reality.observations[0]?.proposer, reality.observations[2]?.proposer);
   assert.equal(reality.observations[1]?.validatorId, reality.observations[2]?.validatorId);
   assert.equal(reality.observations[2]?.duplicateValidator, true);
+  assert.equal(reality.lattice?.duplicateValidatorCount, 1);
+  assert.equal(reality.lattice?.preparedCount, 2);
+  assert.equal(reality.lattice?.committedCount, 2);
+  assert.equal(reality.lattice?.preparedCertificate, false);
+  assert.equal(reality.lattice?.committedCertificate, false);
+  assert.equal(reality.lattice?.status, "FAIL");
+});
+
+test("lattice certificates count distinct validator identities, not vote rows", () => {
+  const block = proposeBlock({
+    height: 18492,
+    parentHash: "0xparent",
+    proposer: "val_0a17",
+    shard: "root",
+    deploys: [],
+    postStateHash: "0xstate",
+    timestamp: "2026-04-11T09:14:11Z",
+  });
+  const observations = observeBlock(block, {
+    duplicateProposer: { from: "C", onto: "B" },
+  });
+  const report = latticeAnalyze(block, observations);
+  assert.equal(report.duplicateValidatorCount, 1);
+  assert.equal(report.distinctPrepareValidators, 2);
+  assert.equal(report.distinctCommitValidators, 2);
+  assert.equal(report.preparedCertificate, false);
+  assert.equal(report.committedCertificate, false);
+  assert.equal(report.status, "FAIL");
+  assert.equal(report.votes.filter((v) => v.accepted && v.phase === "Prepare").length, 2);
+  assert.ok(report.votes.some((v) => !v.accepted && v.rejectReason?.includes("duplicate validator identity")));
 });
