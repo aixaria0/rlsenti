@@ -15,7 +15,7 @@ export interface Pool {
   shard: string;
   tokenA: string;
   tokenB: string;
-  rate: number; // units of B per 1e6 of A
+  rate: number;
   reserveA: number;
   reserveB: number;
   owner: string;
@@ -45,6 +45,12 @@ export interface ExchangeEvent {
   result: unknown;
 }
 
+export interface ConservationReport {
+  conserved: boolean;
+  perPool: Record<string, { a: boolean; b: boolean }>;
+  reason: string;
+}
+
 export interface ExchangeWorld {
   pools: Record<string, Pool>;
   txs: Record<string, PreparedTx[]>;
@@ -68,7 +74,9 @@ function setBal(pool: Pool, who: string, b: Balance) {
 }
 
 function swap(pool: Pool, who: string, from: Side, amount: number): { got: number } | { err: string } {
+  if (!Number.isInteger(amount) || amount <= 0) return { err: "amount must be a positive integer" };
   const out = quote(pool, from, amount);
+  if (!Number.isInteger(out) || out <= 0) return { err: "quoted output is not positive" };
   const b = { ...bal(pool, who) };
   if (from === "A") {
     if (b.a < amount) return { err: "insufficient balance" };
@@ -105,15 +113,7 @@ function unswap(pool: Pool, who: string, from: Side, amount: number, got: number
   setBal(pool, who, b);
 }
 
-function push(
-  w: ExchangeWorld,
-  verb: string,
-  actor: string,
-  poolId: string,
-  ok: boolean,
-  detail: string,
-  result: unknown,
-) {
+function push(w: ExchangeWorld, verb: string, actor: string, poolId: string, ok: boolean, detail: string, result: unknown) {
   w.events.push({ verb, actor, poolId, ok, detail, result });
 }
 
@@ -145,59 +145,22 @@ export function seedWorld(): ExchangeWorld {
   return { pools: { "ALICE-BOB": aliceBob, "BOB-GBP": bobGbp }, txs: {}, events: [], conserved: true };
 }
 
-export function prepare(
-  w: ExchangeWorld,
-  poolId: string,
-  actor: string,
-  txId: string,
-  from: Side,
-  amount: number,
-  expiry: number,
-): boolean {
+export function prepare(w: ExchangeWorld, poolId: string, actor: string, txId: string, from: Side, amount: number, expiry: number): boolean {
   const pool = w.pools[poolId]!;
-  const snap = {
-    reserveA: pool.reserveA,
-    reserveB: pool.reserveB,
-    bal: { ...bal(pool, actor) },
-  };
+  const snap = { reserveA: pool.reserveA, reserveB: pool.reserveB, bal: { ...bal(pool, actor) } };
   const r = swap(pool, actor, from, amount);
   if ("err" in r) {
     push(w, "prepare", actor, poolId, false, r.err, r.err);
     return false;
   }
   const to: Side = from === "A" ? "B" : "A";
-  const rec: PreparedTx = {
-    txId,
-    poolId,
-    holder: actor,
-    fromSide: from,
-    amount,
-    got: r.got,
-    toSide: to,
-    expiryBlock: expiry,
-    status: "prepared",
-    snapshot: snap,
-  };
+  const rec: PreparedTx = { txId, poolId, holder: actor, fromSide: from, amount, got: r.got, toSide: to, expiryBlock: expiry, status: "prepared", snapshot: snap };
   (w.txs[txId] ??= []).push(rec);
-  push(w, "prepare", actor, poolId, true, `prepared ${txId}`, {
-    prepared: txId,
-    got: r.got,
-    toSide: to,
-    expiry,
-  });
+  push(w, "prepare", actor, poolId, true, `prepared ${txId}`, { prepared: txId, got: r.got, toSide: to, expiry });
   return true;
 }
 
-export function prepareReceive(
-  w: ExchangeWorld,
-  poolId: string,
-  actor: string,
-  txId: string,
-  side: Side,
-  amount: number,
-  expiry: number,
-  link: string,
-): boolean {
+export function prepareReceive(w: ExchangeWorld, poolId: string, actor: string, txId: string, side: Side, amount: number, expiry: number, link: string): boolean {
   const pool = w.pools[poolId]!;
   if (!pool.links[link]) {
     push(w, "prepareReceive", actor, poolId, false, `no such link ${link}`, "no such link");
@@ -207,12 +170,7 @@ export function prepareReceive(
   if (side === "A") b.a += amount;
   else b.b += amount;
   setBal(pool, actor, b);
-  const snap = {
-    reserveA: pool.reserveA,
-    reserveB: pool.reserveB,
-    bal: { ...b },
-  };
-  // credit was a deposit; now swap it
+  const snap = { reserveA: pool.reserveA, reserveB: pool.reserveB, bal: { ...b } };
   const r = swap(pool, actor, side, amount);
   if ("err" in r) {
     if (side === "A") b.a -= amount;
@@ -222,68 +180,28 @@ export function prepareReceive(
     return false;
   }
   const to: Side = side === "A" ? "B" : "A";
-  (w.txs[txId] ??= []).push({
-    txId,
-    poolId,
-    holder: actor,
-    fromSide: side,
-    amount,
-    got: r.got,
-    toSide: to,
-    expiryBlock: expiry,
-    status: "prepared",
-    snapshot: snap,
-  });
-  push(w, "prepareReceive", actor, poolId, true, `prepared remote ${txId}`, {
-    prepared: txId,
-    got: r.got,
-    toSide: to,
-    expiry,
-  });
+  (w.txs[txId] ??= []).push({ txId, poolId, holder: actor, fromSide: side, amount, got: r.got, toSide: to, expiryBlock: expiry, status: "prepared", snapshot: snap });
+  push(w, "prepareReceive", actor, poolId, true, `prepared remote ${txId}`, { prepared: txId, got: r.got, toSide: to, expiry });
   return true;
 }
 
 export function commit(w: ExchangeWorld, poolId: string, actor: string, txId: string): boolean {
   const rec = (w.txs[txId] ?? []).find((t) => t.poolId === poolId);
-  if (!rec) {
-    push(w, "commit", actor, poolId, false, "unknown tx", "unknown tx");
-    return false;
-  }
-  if (rec.holder !== actor) {
-    push(w, "commit", actor, poolId, false, "not holder", "not holder");
-    return false;
-  }
-  if (rec.status === "committed") {
-    push(w, "commit", actor, poolId, true, "idempotent commit", { committed: txId });
-    return true;
-  }
+  if (!rec) { push(w, "commit", actor, poolId, false, "unknown tx", "unknown tx"); return false; }
+  if (rec.holder !== actor) { push(w, "commit", actor, poolId, false, "not holder", "not holder"); return false; }
+  if (rec.status === "committed") { push(w, "commit", actor, poolId, true, "idempotent commit", { committed: txId }); return true; }
+  if (rec.status === "aborted") { push(w, "commit", actor, poolId, false, "already aborted", "already aborted"); return false; }
   rec.status = "committed";
-  push(w, "commit", actor, poolId, true, `committed ${txId}`, {
-    committed: txId,
-    got: rec.got,
-    toSide: rec.toSide,
-  });
+  push(w, "commit", actor, poolId, true, `committed ${txId}`, { committed: txId, got: rec.got, toSide: rec.toSide });
   return true;
 }
 
 export function abort(w: ExchangeWorld, poolId: string, actor: string, txId: string, height: number): boolean {
   const rec = (w.txs[txId] ?? []).find((t) => t.poolId === poolId);
-  if (!rec) {
-    push(w, "abort", actor, poolId, false, "unknown tx", "unknown tx");
-    return false;
-  }
-  if (rec.status === "aborted") {
-    push(w, "abort", actor, poolId, true, "idempotent abort", { aborted: txId });
-    return true;
-  }
-  if (rec.status === "committed") {
-    push(w, "abort", actor, poolId, false, "already committed", "already committed");
-    return false;
-  }
-  if (rec.holder !== actor && height <= rec.expiryBlock) {
-    push(w, "abort", actor, poolId, false, "not holder; not yet expired", "not holder; not yet expired");
-    return false;
-  }
+  if (!rec) { push(w, "abort", actor, poolId, false, "unknown tx", "unknown tx"); return false; }
+  if (rec.status === "aborted") { push(w, "abort", actor, poolId, true, "idempotent abort", { aborted: txId }); return true; }
+  if (rec.status === "committed") { push(w, "abort", actor, poolId, false, "already committed", "already committed"); return false; }
+  if (rec.holder !== actor && height <= rec.expiryBlock) { push(w, "abort", actor, poolId, false, "not holder; not yet expired", "not holder; not yet expired"); return false; }
   const pool = w.pools[poolId]!;
   unswap(pool, rec.holder, rec.fromSide, rec.amount, rec.got);
   rec.status = "aborted";
@@ -291,22 +209,37 @@ export function abort(w: ExchangeWorld, poolId: string, actor: string, txId: str
   return true;
 }
 
-export function poolsConserved(w: ExchangeWorld, genesis: ExchangeWorld): boolean {
-  for (const id of Object.keys(w.pools)) {
-    const a = genesis.pools[id]!;
-    const b = w.pools[id]!;
-    const genTotA = a.reserveA + Object.values(a.balances).reduce((s, x) => s + x.a, 0);
-    const genTotB = a.reserveB + Object.values(a.balances).reduce((s, x) => s + x.b, 0);
-    const nowA = b.reserveA + Object.values(b.balances).reduce((s, x) => s + x.a, 0);
-    const nowB = b.reserveB + Object.values(b.balances).reduce((s, x) => s + x.b, 0);
-    // prepareReceive credits remote A as if deposited — total A on that pool increases
-    // by the credited amount. Conservation is per-swap, not per-world across shards.
-    void genTotA;
-    void genTotB;
-    void nowA;
-    void nowB;
+function totals(pool: Pool) {
+  return {
+    a: pool.reserveA + Object.values(pool.balances).reduce((s, x) => s + x.a, 0),
+    b: pool.reserveB + Object.values(pool.balances).reduce((s, x) => s + x.b, 0),
+  };
+}
+
+/** Compare each pool's total token inventory against its genesis snapshot. */
+export function conservationReport(w: ExchangeWorld, genesis: ExchangeWorld): ConservationReport {
+  const perPool: ConservationReport["perPool"] = {};
+  let conserved = true;
+  const reasons: string[] = [];
+  for (const id of Object.keys(genesis.pools)) {
+    const before = totals(genesis.pools[id]!);
+    const after = totals(w.pools[id]!);
+    const a = before.a === after.a;
+    const b = before.b === after.b;
+    perPool[id] = { a, b };
+    if (!a || !b) {
+      conserved = false;
+      reasons.push(`${id}: A ${before.a}→${after.a}, B ${before.b}→${after.b}`);
+    }
   }
-  return w.events.filter((e) => e.verb === "swap" || e.verb === "prepare").every((e) => e.ok);
+  return { conserved, perPool, reason: conserved ? "all pool token inventories conserved" : reasons.join("; ") };
+}
+
+export function poolsConserved(w: ExchangeWorld, genesis: ExchangeWorld): boolean {
+  const report = conservationReport(w, genesis);
+  const successfulMutations = w.events.filter((e) => ["prepare", "prepareReceive", "commit", "abort"].includes(e.verb) && e.ok);
+  const noInvalidMutation = w.events.every((e) => e.ok || ["prepare", "prepareReceive", "commit", "abort"].includes(e.verb));
+  return report.conserved && successfulMutations.length > 0 && noInvalidMutation;
 }
 
 export function cloneWorld(w: ExchangeWorld): ExchangeWorld {
