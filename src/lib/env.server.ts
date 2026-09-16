@@ -3,12 +3,7 @@ export function env(key: string): string | undefined {
   return v || undefined;
 }
 
-/**
- * Workspace preview vs deployed app. The deployer writes GROK_PROJECT_ID on
- * every publish; the sandbox preview never has it. Single source of truth for
- * the split — gate audience, gate endpoints and connector-token semantics all
- * key off this predicate.
- */
+/** True when the app is running without a deployed project identity. */
 export function isWorkspacePreview(): boolean {
-  return !env("GROK_PROJECT_ID");
+  return !env("APP_PROJECT_ID");
 }
