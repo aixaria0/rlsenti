@@ -74,7 +74,7 @@ export function receiveCbcWitness(input: unknown): CbcWitnessReceipt {
       report.milestone !== "M27" || report.upstreamRevision !== source.upstreamRevision) {
     throw new Error("Unsupported CBC source pin");
   }
-  requireHex64(source.commit, "source commit");
+  if (!/^[0-9a-f]{40}$/.test(source.commit as string)) throw new Error("Invalid source commit");
   requireHex64(report.digest, "report digest");
   requireHex64(input.payloadSha256, "payloadSha256");
   if (canonical({ schema: input.schema, source, report }).length > 1_000_000) {
