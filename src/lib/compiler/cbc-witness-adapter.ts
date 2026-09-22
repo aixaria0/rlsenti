@@ -8,8 +8,6 @@ import { sha256 } from "./hash.ts";
 export const CBC_WITNESS_SCHEMA = "aria-cbc-witness/v1" as const;
 export const CBC_WORKBENCH_SCHEMA = "aria-cbc-workbench-receipt/v1" as const;
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
