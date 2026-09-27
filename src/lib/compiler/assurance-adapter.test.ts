@@ -66,3 +66,54 @@ test("imports the frozen cross-repo fixture digest without promoting its verdict
   assert.equal(imported.model?.certificate.status, "BLOCKED");
   assert.deepEqual(imported.model?.evidenceDigests, [fixtureDigest]);
 });
+
+test("INCONCLUSIVE is blocked and can never hide under a PASS certificate", () => {
+  const digest = "sha256:" + "d".repeat(64);
+  const certificate: AssuranceCertificateView = {
+    schema: "causal-assurance-certificate/v1",
+    id: "assurance:inconclusive",
+    issuedAt: "2026-09-27T00:00:00Z",
+    status: "BLOCKED",
+    records: [],
+    checks: [{
+      id: "bounded-search",
+      plane: "POSSIBILITY",
+      state: "INCONCLUSIVE",
+      critical: true,
+      description: "budget exhausted before a conclusive result",
+      evidence: [digest],
+    }],
+    integrity: { algorithm: "SHA-256", certificateDigest: "sha256:" + "e".repeat(64) },
+  };
+  const accepted = importAssuranceCertificate(certificate);
+  assert.equal(accepted.status, "ACCEPTED");
+  assert.equal(accepted.model?.criticalBlocked.length, 1);
+
+  const contradictory = structuredClone(certificate);
+  contradictory.status = "PASS";
+  const rejected = importAssuranceCertificate(contradictory);
+  assert.equal(rejected.status, "REJECTED");
+  assert.match(rejected.reason, /contradicts critical INCONCLUSIVE/);
+});
+
+test("projects supply-chain checks without changing their verdict", () => {
+  const certificate: AssuranceCertificateView = {
+    schema: "causal-assurance-certificate/v1",
+    id: "assurance:supply-chain",
+    issuedAt: "2026-09-27T00:00:00Z",
+    status: "BLOCKED",
+    records: [],
+    checks: [{
+      id: "provenance",
+      plane: "SUPPLY_CHAIN",
+      state: "NOT_TESTED",
+      critical: true,
+      description: "trusted-build provenance unavailable",
+      evidence: [],
+    }],
+    integrity: { algorithm: "SHA-256", certificateDigest: "sha256:" + "f".repeat(64) },
+  };
+  const model = projectAssuranceCertificate(certificate);
+  assert.equal(model.planes.SUPPLY_CHAIN.length, 1);
+  assert.equal(model.criticalBlocked.length, 1);
+});
