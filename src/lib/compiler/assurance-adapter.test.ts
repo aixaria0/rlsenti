@@ -43,3 +43,26 @@ test("rejects malformed or explicitly invalid integrity instead of rendering it"
   malformed.integrity.certificateDigest = "sha256:bad";
   assert.equal(importAssuranceCertificate(malformed).status, "REJECTED");
 });
+
+test("imports the frozen cross-repo fixture digest without promoting its verdict", () => {
+  const fixtureDigest = "sha256:4f4fd3c2715b193a78d79ac0be11c893aa7bfdc6f9a52ca7de1240d64f2a1703";
+  const certificate: AssuranceCertificateView = {
+    schema: "causal-assurance-certificate/v1",
+    id: "assurance:cross-repo-fixture",
+    issuedAt: "2026-09-27T00:00:00Z",
+    status: "BLOCKED",
+    records: [{
+      id: "fixture-record", label: "canonical fixture", source: "RCHAIN-COMPLIER",
+      sourceClass: "DETERMINISTIC_REPLAY", state: "VERIFIED", digest: fixtureDigest, integrityValid: true,
+    }],
+    checks: [{
+      id: "fixture-check", plane: "POSSIBILITY", state: "PASS", critical: true,
+      description: "frozen cross-repo fixture", evidence: [fixtureDigest],
+    }],
+    integrity: { algorithm: "SHA-256", certificateDigest: "sha256:" + "c".repeat(64) },
+  };
+  const imported = importAssuranceCertificate(certificate);
+  assert.equal(imported.status, "ACCEPTED");
+  assert.equal(imported.model?.status, "BLOCKED");
+  assert.deepEqual(imported.model?.evidenceDigests, [fixtureDigest]);
+});
