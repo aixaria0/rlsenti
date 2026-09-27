@@ -34,3 +34,43 @@ export function projectAssuranceCertificate(certificate: AssuranceCertificateVie
     evidenceDigests: [...new Set([...certificate.records.map((record) => record.digest), ...certificate.checks.flatMap((check) => check.evidence)])].sort(),
   };
 }
+
+function isSha256(value: string): boolean {
+  return /^sha256:[0-9a-fA-F]{64}$/.test(value);
+}
+
+export interface AssuranceImportResult {
+  status: "ACCEPTED" | "REJECTED";
+  reason: string;
+  model: AssuranceWorkbenchModel | null;
+}
+
+/**
+ * Fail-closed import boundary. The viewer does not recompute producer claims,
+ * but it refuses malformed digest bindings or records already marked as having
+ * invalid integrity.
+ */
+export function importAssuranceCertificate(
+  certificate: AssuranceCertificateView,
+): AssuranceImportResult {
+  if (!isSha256(certificate.integrity.certificateDigest)) {
+    return { status: "REJECTED", reason: "malformed certificate digest", model: null };
+  }
+  const badRecord = certificate.records.find(
+    (record) => !record.integrityValid || !isSha256(record.digest),
+  );
+  if (badRecord) {
+    return {
+      status: "REJECTED",
+      reason: `record integrity rejected: ${badRecord.id}`,
+      model: null,
+    };
+  }
+  const malformedEvidence = certificate.checks
+    .flatMap((check) => check.evidence)
+    .find((digest) => !isSha256(digest));
+  if (malformedEvidence) {
+    return { status: "REJECTED", reason: "malformed evidence digest", model: null };
+  }
+  return { status: "ACCEPTED", reason: "integrity envelope accepted", model: projectAssuranceCertificate(certificate) };
+}
