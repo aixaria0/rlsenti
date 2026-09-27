@@ -63,6 +63,6 @@ test("imports the frozen cross-repo fixture digest without promoting its verdict
   };
   const imported = importAssuranceCertificate(certificate);
   assert.equal(imported.status, "ACCEPTED");
-  assert.equal(imported.model?.status, "BLOCKED");
+  assert.equal(imported.model?.certificate.status, "BLOCKED");
   assert.deepEqual(imported.model?.evidenceDigests, [fixtureDigest]);
 });
