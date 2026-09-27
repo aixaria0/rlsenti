@@ -1,5 +1,5 @@
-export type AssuranceVerdict = "PASS" | "FAIL" | "BLOCKED" | "NOT_TESTED";
-export type AssurancePlane = "POSSIBILITY" | "REALITY" | "CONFORMANCE" | "RECOVERY";
+export type AssuranceVerdict = "PASS" | "FAIL" | "BLOCKED" | "NOT_TESTED" | "INCONCLUSIVE";
+export type AssurancePlane = "POSSIBILITY" | "REALITY" | "CONFORMANCE" | "RECOVERY" | "SUPPLY_CHAIN";
 
 export interface AssuranceCheckView {
   id: string; plane: AssurancePlane; state: AssuranceVerdict; critical: boolean;
@@ -24,14 +24,29 @@ export interface AssuranceWorkbenchModel {
 }
 
 export function projectAssuranceCertificate(certificate: AssuranceCertificateView): AssuranceWorkbenchModel {
-  const planes: AssuranceWorkbenchModel["planes"] = { POSSIBILITY: [], REALITY: [], CONFORMANCE: [], RECOVERY: [] };
+  const planes: AssuranceWorkbenchModel["planes"] = {
+    POSSIBILITY: [],
+    REALITY: [],
+    CONFORMANCE: [],
+    RECOVERY: [],
+    SUPPLY_CHAIN: [],
+  };
   for (const check of certificate.checks) planes[check.plane].push(check);
   return {
     certificate,
     planes,
     criticalFailures: certificate.checks.filter((check) => check.critical && check.state === "FAIL"),
-    criticalBlocked: certificate.checks.filter((check) => check.critical && (check.state === "BLOCKED" || check.state === "NOT_TESTED")),
-    evidenceDigests: [...new Set([...certificate.records.map((record) => record.digest), ...certificate.checks.flatMap((check) => check.evidence)])].sort(),
+    criticalBlocked: certificate.checks.filter(
+      (check) =>
+        check.critical
+        && (check.state === "BLOCKED" || check.state === "NOT_TESTED" || check.state === "INCONCLUSIVE"),
+    ),
+    evidenceDigests: [
+      ...new Set([
+        ...certificate.records.map((record) => record.digest),
+        ...certificate.checks.flatMap((check) => check.evidence),
+      ]),
+    ].sort(),
   };
 }
 
@@ -47,8 +62,8 @@ export interface AssuranceImportResult {
 
 /**
  * Fail-closed import boundary. The viewer does not recompute producer claims,
- * but it refuses malformed digest bindings or records already marked as having
- * invalid integrity.
+ * but it refuses malformed digest bindings, records marked invalid, or a PASS
+ * certificate that contradicts any critical non-PASS check.
  */
 export function importAssuranceCertificate(
   certificate: AssuranceCertificateView,
@@ -72,5 +87,21 @@ export function importAssuranceCertificate(
   if (malformedEvidence) {
     return { status: "REJECTED", reason: "malformed evidence digest", model: null };
   }
-  return { status: "ACCEPTED", reason: "integrity envelope accepted", model: projectAssuranceCertificate(certificate) };
+  if (certificate.status === "PASS") {
+    const contradictory = certificate.checks.find(
+      (check) => check.critical && check.state !== "PASS",
+    );
+    if (contradictory) {
+      return {
+        status: "REJECTED",
+        reason: `PASS certificate contradicts critical ${contradictory.state} check: ${contradictory.id}`,
+        model: null,
+      };
+    }
+  }
+  return {
+    status: "ACCEPTED",
+    reason: "integrity envelope accepted without verdict promotion",
+    model: projectAssuranceCertificate(certificate),
+  };
 }
