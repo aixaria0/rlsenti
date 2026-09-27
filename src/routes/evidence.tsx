@@ -3,6 +3,7 @@ import { shortHex } from "@/lib/compiler";
 import { useWorkbench } from "@/lib/workbench-state";
 import { MobileNav } from "@/components/wb/shell";
 import { EvidenceList, Expandable, FieldRow, Panel, SeverityTag, StatusTag } from "@/components/wb/primitives";
+import { AssuranceInspector } from "@/components/wb/assurance-inspector";
 
 export const Route = createFileRoute("/evidence")({
   component: Evidence,
@@ -14,6 +15,7 @@ function Evidence() {
   return (
     <div className="grid gap-3">
       <MobileNav />
+      <AssuranceInspector />
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Cross-node report" subtitle="Sentinel observation — not stake-weighted finality" right={c ? <StatusTag status={c.status} /> : null}>
           {c ? (
