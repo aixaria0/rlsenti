@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectAssuranceCertificate, type AssuranceCertificateView } from "./assurance-adapter.ts";
+import { importAssuranceCertificate, projectAssuranceCertificate, type AssuranceCertificateView } from "./assurance-adapter.ts";
 
 test("projects assurance planes without promoting a blocked certificate", () => {
   const certificate: AssuranceCertificateView = {
@@ -17,4 +17,29 @@ test("projects assurance planes without promoting a blocked certificate", () => 
   assert.equal(model.planes.POSSIBILITY.length, 1);
   assert.equal(model.criticalBlocked.length, 1);
   assert.deepEqual(model.evidenceDigests, ["sha256:a"]);
+});
+
+test("rejects malformed or explicitly invalid integrity instead of rendering it", () => {
+  const base: AssuranceCertificateView = {
+    schema: "causal-assurance-certificate/v1",
+    id: "assurance:tamper",
+    issuedAt: "2026-09-27T00:00:00Z",
+    status: "PASS",
+    records: [{
+      id: "record-1", label: "fixture", source: "test", sourceClass: "NATIVE_REPLAY",
+      state: "VERIFIED", digest: "sha256:" + "a".repeat(64), integrityValid: true,
+    }],
+    checks: [{
+      id: "reality", plane: "REALITY", state: "PASS", critical: true,
+      description: "fixture", evidence: ["sha256:" + "b".repeat(64)],
+    }],
+    integrity: { algorithm: "SHA-256", certificateDigest: "sha256:" + "c".repeat(64) },
+  };
+  assert.equal(importAssuranceCertificate(base).status, "ACCEPTED");
+  const tampered = structuredClone(base);
+  tampered.records[0]!.integrityValid = false;
+  assert.equal(importAssuranceCertificate(tampered).status, "REJECTED");
+  const malformed = structuredClone(base);
+  malformed.integrity.certificateDigest = "sha256:bad";
+  assert.equal(importAssuranceCertificate(malformed).status, "REJECTED");
 });
