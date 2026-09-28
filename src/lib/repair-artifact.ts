@@ -45,9 +45,9 @@ export interface RepairArtifactView {
 export const AETHERFORGE_REPAIR_CAPTURE = {
   source: {
     repository: "aixaria0/RCHAIN-COMPLIER",
-    commit: "17edff269dcb3cf0505975aad7ebe6d4af2834d9",
+    commit: "6df5863a337985609f7ef12532e07e1e3bf8e228",
     workflow: "Verification Core CI",
-    workflowRunId: 36361740738,
+    workflowRunId: 36362504860,
     capturedStep: "Run AETHER FORGE minimal-repair demo",
   },
   artifact: {
