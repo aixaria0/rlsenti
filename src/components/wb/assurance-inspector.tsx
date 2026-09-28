@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useWorkbench } from "@/lib/workbench-state";
 import { Mono, Panel, StatusTag } from "./primitives";
+import { RepairArtifactInspector } from "./repair-artifact-inspector";
 
 function stageTone(state: "BOUND" | "ABSENT" | "LEGACY") {
   return state === "BOUND"
@@ -112,6 +113,8 @@ export function AssuranceInspector() {
           ))}
         </div>
       </Panel>
+
+      <RepairArtifactInspector />
 
       <Panel
         title="Claim boundary inspector"
