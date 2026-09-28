@@ -176,3 +176,7 @@ Future work can connect the normalized evidence model to real RChain/Sentinel so
 ## License
 
 See the repository for the current project license and dependency notices.
+
+## Assurance fabric role
+
+rlsenti is the **read-only inspection boundary** for v1 assurance artifacts. Its repair propagation inspector validates the portable `causal-assurance-repair-propagation/v1` contract and preserves the upstream claim boundary. UI or inspection acceptance must not strengthen bounded repair/native-replay evidence into a production-safety claim.
