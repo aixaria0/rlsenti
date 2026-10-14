@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./site.css?v=3" />
+  <link rel="stylesheet" href="./site.css?v=4" />
 </head>
 <body>
   <div class="cursor-glow" aria-hidden="true"></div>
@@ -21,7 +21,7 @@
       <span><strong>RLSENTI</strong><small>EVIDENCE COMPILER / RCHAIN REALITY WORKBENCH</small></span>
     </a>
     <nav class="nav" aria-label="Primary">
-      <a href="#forge">Forge</a><a href="#envelopes">Provenance</a><a href="#divergence">Replay</a><a href="#boundary">Boundary</a>
+      <a href="#testlab">Test Lab</a><a href="#forge">Forge</a><a href="#envelopes">Provenance</a><a href="#divergence">Replay</a><a href="#boundary">Boundary</a>
     </nav>
     <a class="source-link" href="https://github.com/aixaria0/rlsenti" target="_blank" rel="noreferrer">SOURCE ↗</a>
   </header>
@@ -33,7 +33,7 @@
         <h1>Artifacts are not evidence<br><em>until they survive translation.</em></h1>
         <p class="hero-lede">RLSenti compiles deterministic protocol output into linked witness envelopes: normalized, provenance-bound, adversarially challenged, replay-aware, and explicit about what the evidence still cannot prove.</p>
         <div class="hero-note"><span>SYNTHETIC / DETERMINISTIC WORKBENCH</span><b>≠</b><span>LIVE RCHAIN FINALITY PROOF</span></div>
-        <div class="hero-actions"><a class="btn primary" href="#forge">ENTER REALITY FORGE ↓</a><a class="btn" href="./workbench/">OPEN DEEP WORKBENCH ↗</a></div>
+        <div class="hero-actions"><a class="btn primary" href="#testlab">OPEN TEST DASHBOARD ↓</a><a class="btn" href="#forge">ENTER REALITY FORGE ↓</a><a class="btn" href="./workbench/">DEEP WORKBENCH ↗</a></div>
       </div>
       <div class="foundry-frame reveal" aria-label="Animated evidence compiler">
         <canvas id="foundryCanvas"></canvas>
@@ -45,7 +45,7 @@
         <div class="foundry-corners" aria-hidden="true"></div>
       </div>
       <div class="hero-metrics reveal">
-        <div><strong>69</strong><span>COMMITS</span></div>
+        <div><strong>70</strong><span>COMMITS</span></div>
         <div><strong>6,786</strong><span>TS / TSX LOC</span></div>
         <div><strong>162</strong><span>TESTS PASSING</span></div>
         <div><strong>7</strong><span>INTERACTIVE ROUTES</span></div>
@@ -96,8 +96,37 @@
       </div>
     </section>
 
+    <section class="testlab shell" id="testlab">
+      <header class="section-head reveal"><div><span>02 / TEST DASHBOARD</span><h2>Break the model.<br>Inspect the receipts.</h2></div><p>This dashboard replays deterministic fixtures generated from the same compiler during deployment. Choose a scenario, inject a mutation, run it, then inspect the witness, replay, execution trace, claims and the complete 23-run matrix.</p></header>
+      <div class="lab-shell reveal">
+        <div class="lab-toolbar">
+          <label><span>SCENARIO</span><select id="labScenario"></select></label>
+          <label><span>MUTATION</span><select id="labMutation"></select></label>
+          <button id="labRun" class="lab-run" type="button">RUN TEST</button>
+          <div class="lab-source"><i></i><span>BUILD-GENERATED COMPILER FIXTURE</span><b id="labStamp">READY</b></div>
+        </div>
+        <div class="lab-kpis">
+          <article class="lab-verdict-card"><span>VERDICT</span><strong id="labVerdict">—</strong><small id="labWhy">awaiting run</small></article>
+          <article><span>FIRST DIVERGENCE</span><strong id="labDivergence">—</strong><small>earliest changed evidence layer</small></article>
+          <article><span>REPLAY</span><strong id="labReplay">—</strong><small id="labReplayDetail">deterministic comparison</small></article>
+          <article><span>CROSS-NODE</span><strong id="labCross">—</strong><small id="labCrossDetail">observed agreement only</small></article>
+          <article><span>CERTIFICATE</span><strong id="labCert">—</strong><small id="labCertDetail">PBFT-shaped analysis</small></article>
+          <article><span>ENVELOPES</span><strong id="labEnvelopeCount">—</strong><small>hash-linked witness chain</small></article>
+        </div>
+        <div class="lab-panels">
+          <article class="lab-panel lab-trace-panel"><header><span>EXECUTION TRACE</span><b id="labTraceCount">0 STEPS</b></header><div id="labTrace" class="lab-trace"></div></article>
+          <article class="lab-panel"><header><span>FAILURE WITNESS</span><b id="labWitnessTag">NONE</b></header><div id="labWitness" class="lab-witness"></div></article>
+          <article class="lab-panel"><header><span>CLAIM BOUNDARY</span><b id="labClaimStatus">—</b></header><div id="labClaim" class="lab-claim"></div></article>
+        </div>
+        <div class="lab-matrix-block">
+          <div class="lab-matrix-head"><div><span>COMPLETE TEST MATRIX</span><strong>23 deterministic compiler runs</strong></div><div id="labCounts" class="lab-counts"></div></div>
+          <div class="lab-table-wrap"><table class="lab-table"><thead><tr><th>SCENARIO</th><th>MUTATION</th><th>STATUS</th><th>WITNESS</th><th>REPLAY</th><th>ENVELOPES</th><th>OPEN</th></tr></thead><tbody id="labMatrix"></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
     <section class="envelopes shell" id="envelopes">
-      <header class="section-head reveal"><div><span>02 / ENVELOPE CHAMBER</span><h2>A chain of custody<br>for computation.</h2></div><p>Each envelope binds a typed payload to the previous envelope hash. Select a layer to inspect what was carried forward—and what was not.</p></header>
+      <header class="section-head reveal"><div><span>03 / ENVELOPE CHAMBER</span><h2>A chain of custody<br>for computation.</h2></div><p>Each envelope binds a typed payload to the previous envelope hash. Select a layer to inspect what was carried forward—and what was not.</p></header>
       <div class="envelope-layout reveal">
         <div id="envelopeChain" class="envelope-chain"></div>
         <aside class="envelope-inspector">
@@ -112,7 +141,7 @@
 
     <section class="divergence" id="divergence">
       <div class="shell">
-        <header class="section-head reveal"><div><span>03 / DIVERGENCE LAB</span><h2>Replay is not repetition.<br>It is localization.</h2></div><p>Baseline and mutated realities are compared at the earliest changed evidence layer. Downstream differences remain consequences, not substitutes for the first cause.</p></header>
+        <header class="section-head reveal"><div><span>04 / DIVERGENCE LAB</span><h2>Replay is not repetition.<br>It is localization.</h2></div><p>Baseline and mutated realities are compared at the earliest changed evidence layer. Downstream differences remain consequences, not substitutes for the first cause.</p></header>
         <div class="diff-stage reveal">
           <article class="reality-card baseline"><span>RUN A / BASELINE</span><strong id="baseTitle">—</strong><code id="baseHash">—</code><div id="baseTrace" class="trace"></div></article>
           <div class="diff-axis"><span id="diffLayer">NO DIVERGENCE</span><i></i><b></b><em>FIRST DIFFERENCE</em></div>
@@ -122,7 +151,7 @@
     </section>
 
     <section class="boundary shell" id="boundary">
-      <header class="section-head reveal"><div><span>04 / CLAIM CONTRACT</span><h2>Structure can carry a claim.<br>It cannot manufacture truth.</h2></div></header>
+      <header class="section-head reveal"><div><span>05 / CLAIM CONTRACT</span><h2>Structure can carry a claim.<br>It cannot manufacture truth.</h2></div></header>
       <div class="boundary-grid reveal">
         <article><span>DERIVED</span><h3>Deterministic execution</h3><p>Same scenario and mutation produce reproducible in-browser artifacts and domain-separated hashes.</p><footer>REPRODUCIBLE ≠ UNIVERSAL</footer></article>
         <article><span>BOUND</span><h3>Linked provenance</h3><p>Every important artifact can reference its parent evidence through an explicit envelope chain.</p><footer>HASH LINK ≠ TRUTH</footer></article>
@@ -132,7 +161,7 @@
     </section>
 
     <section class="architecture shell">
-      <header class="section-head reveal"><div><span>05 / VERTICAL ARCHITECTURE</span><h2>One evidence surface.<br>Multiple explicit boundaries.</h2></div><p>RLSenti is useful because the layers stay distinguishable. It composes evidence without pretending the layers are equivalent.</p></header>
+      <header class="section-head reveal"><div><span>06 / VERTICAL ARCHITECTURE</span><h2>One evidence surface.<br>Multiple explicit boundaries.</h2></div><p>RLSenti is useful because the layers stay distinguishable. It composes evidence without pretending the layers are equivalent.</p></header>
       <div class="arch-stack reveal">
         <div><b>01</b><span>QuantumOS</span><p>interaction / capability / lemma</p></div>
         <div><b>02</b><span>QLF / ZFA</span><p>event-level logical certificate</p></div>
@@ -150,6 +179,6 @@
     <div><strong>RLSENTI</strong><p>Evidence compiler / provenance workbench / integration-ready prototype.</p></div>
     <div><a href="./workbench/">DEEP WORKBENCH ↗</a><a href="https://github.com/aixaria0/rlsenti" target="_blank" rel="noreferrer">SOURCE ↗</a></div>
   </footer>
-  <script src="./site.js?v=3" defer></script>
+  <script src="./site.js?v=4" defer></script>
 </body>
 </html>

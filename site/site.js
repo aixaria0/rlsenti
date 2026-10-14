@@ -4,8 +4,8 @@ const short=(v,n=10)=>!v?'—':v.length>n*2+3?`${v.slice(0,n)}…${v.slice(-n)}`
 const esc=(s)=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 async function boot(){
-  state.data=await fetch('./data/reality.json?v=1').then(r=>r.json());
-  bindGlobal(); renderControls(); selectRun(); initReveal(); initNarrative(); initCanvas();
+  state.data=await fetch('./data/reality.json?v=4').then(r=>r.json());
+  bindGlobal(); initLab(); renderControls(); selectRun(); initReveal(); initNarrative(); initCanvas();
 }
 function bindGlobal(){
   document.addEventListener('pointermove',e=>{const g=$('.cursor-glow');if(g){g.style.left=e.clientX+'px';g.style.top=e.clientY+'px'}});
@@ -21,6 +21,33 @@ function selectRun(){
   state.run=state.data.runs[state.scenario][state.mutation];state.baseline=state.data.runs[state.scenario].none;state.selectedEnvelope=Math.min(state.selectedEnvelope,state.run.envelopes.length-1);renderRun();
 }
 function statusClass(s){return String(s||'').toLowerCase()}
+
+function initLab(){
+  const scenario=$('#labScenario'),mutation=$('#labMutation'),run=$('#labRun');
+  if(!scenario||!mutation||!run)return;
+  scenario.innerHTML=state.data.scenarios.map(s=>`<option value="${s.id}">${esc(s.title)}</option>`).join('');
+  const syncMutations=()=>{const muts=state.data.mutations.filter(m=>m.applies.includes(scenario.value));mutation.innerHTML=muts.map(m=>`<option value="${m.id}">${esc(m.title)}</option>`).join('');};
+  scenario.onchange=syncMutations;syncMutations();
+  run.onclick=()=>{state.scenario=scenario.value;state.mutation=mutation.value;run.classList.remove('running');void run.offsetWidth;run.classList.add('running');$('#labStamp').textContent='RUN '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});renderControls();selectRun();setTimeout(()=>run.classList.remove('running'),650)};
+  $('#labMatrix').onclick=e=>{const b=e.target.closest('[data-lab-run]');if(!b)return;const [sc,mu]=b.dataset.labRun.split('|');state.scenario=sc;state.mutation=mu;scenario.value=sc;syncMutations();mutation.value=mu;renderControls();selectRun();$('#testlab').scrollIntoView({behavior:'smooth',block:'start'})};
+  renderLabMatrix();
+}
+function renderLab(){
+  if(!state.run||!$('#labVerdict'))return;const r=state.run;const scenario=$('#labScenario'),mutation=$('#labMutation');if(scenario){scenario.value=state.scenario;const muts=state.data.mutations.filter(m=>m.applies.includes(state.scenario));mutation.innerHTML=muts.map(m=>`<option value="${m.id}">${esc(m.title)}</option>`).join('');mutation.value=state.mutation}
+  const verdict=$('#labVerdict');verdict.textContent=r.status;verdict.className=statusClass(r.status);
+  $('#labWhy').textContent=(r.why&&r.why[0])||'bounded deterministic result';
+  $('#labDivergence').textContent=r.firstEnvelopeDivergence?String(r.firstEnvelopeDivergence.layer).toUpperCase():r.replay?.firstDivergence?`RSPACE / STEP ${r.replay.firstDivergence.step}`:'NONE';
+  $('#labReplay').textContent=!r.replay?'N/A':r.replay.match?'MATCH':'DIVERGED';$('#labReplayDetail').textContent=!r.replay?'no execution':`${r.replay.stepsCompared} steps compared`;
+  $('#labCross').textContent=!r.cross?'N/A':`${r.cross.agreeingNodes}/${r.cross.targetCount}`;$('#labCrossDetail').textContent=!r.cross?'no observations':`${r.cross.status} / quorum ${r.cross.quorumObserved?'observed':'not observed'}`;
+  $('#labCert').textContent=!r.lattice?'N/A':r.lattice.committedCertificate?'COMMIT QC':'NO QC';$('#labCertDetail').textContent=!r.lattice?'no digest':`${r.lattice.status} / ${r.lattice.committedCount}/${r.lattice.quorum} commit votes`;
+  $('#labEnvelopeCount').textContent=r.envelopes.length;
+  const steps=r.execution?.steps||[];$('#labTraceCount').textContent=`${steps.length} STEPS`;$('#labTrace').innerHTML=steps.length?steps.map(st=>`<div class="lab-trace-row"><i>${String(st.n).padStart(2,'0')}</i><b>${esc(st.rule)}</b><span>${esc(st.description)}</span></div>`).join(''):'<div class="lab-witness empty">No execution trace under this run.</div>';
+  const w=r.witness;$('#labWitnessTag').textContent=w?`${w.verification} / ${w.invariantId}`:'NONE';$('#labWitnessTag').style.color=w?'var(--red)':'var(--cyan)';$('#labWitness').className='lab-witness'+(w?'':' empty');$('#labWitness').innerHTML=w?`<dl><div><dt>LAYER</dt><dd>${esc(w.layer)}</dd></div><div><dt>INVARIANT</dt><dd>${esc(w.invariant)}</dd></div><div><dt>EXPECTED</dt><dd>${esc(w.expected)}</dd></div><div><dt>OBSERVED</dt><dd>${esc(w.observed)}</dd></div><div><dt>SOURCE</dt><dd>${esc(w.source)} / ${esc(w.field)}</dd></div><div><dt>IMPACT</dt><dd>${esc(w.impact)}</dd></div></dl>`:'No failure witness. This PASS remains bounded by the implemented model.';
+  const claim=(r.claims||[]).find(c=>c.status==='FAIL'||c.status==='WARN')||(r.claims||[]).at(-1);$('#labClaimStatus').textContent=claim?.status||r.status;$('#labClaimStatus').style.color=claim?.status==='FAIL'?'var(--red)':claim?.status==='WARN'?'var(--amber)':'var(--cyan)';$('#labClaim').innerHTML=claim?`<dl><div><dt>STATEMENT</dt><dd>${esc(claim.statement)}</dd></div><div><dt>BASIS</dt><dd>${esc(claim.basis)}</dd></div><div><dt>NOT CLAIMED</dt><dd>${esc(claim.notClaimed)}</dd></div></dl>`:'<div class="lab-witness empty">No exported claim object.</div>';
+}
+function renderLabMatrix(){
+  if(!$('#labMatrix'))return;const rows=[];const counts={PASS:0,WARN:0,FAIL:0,UNAVAILABLE:0};for(const sc of state.data.scenarios){for(const [mu,r] of Object.entries(state.data.runs[sc.id]||{})){counts[r.status]=(counts[r.status]||0)+1;const mm=state.data.mutations.find(x=>x.id===mu);rows.push(`<tr><td>${esc(sc.title)}</td><td>${esc(mm?.title||mu)}</td><td class="status ${statusClass(r.status)}">${esc(r.status)}</td><td>${esc(r.witness?.invariantId||'—')}</td><td>${!r.replay?'N/A':r.replay.match?'MATCH':'DIVERGED'}</td><td>${r.envelopes?.length||0}</td><td><button class="lab-open" data-lab-run="${sc.id}|${mu}">OPEN</button></td></tr>`);}}$('#labMatrix').innerHTML=rows.join('');$('#labCounts').innerHTML=`<b class="pass">PASS ${counts.PASS||0}</b><b class="warn">WARN ${counts.WARN||0}</b><b class="fail">FAIL ${counts.FAIL||0}</b><b>TOTAL ${rows.length}</b>`;
+}
 function renderRun(){
   const r=state.run,b=state.baseline,meta=state.data.scenarios.find(x=>x.id===state.scenario),mut=state.data.mutations.find(x=>x.id===state.mutation);
   $('#runStatus').textContent=r.status;$('#runStatus').className=statusClass(r.status);
@@ -34,7 +61,7 @@ function renderRun(){
   const w=r.witness;$('#witnessBadge').textContent=w?`${w.verification} / ${w.invariantId}`:'NO FAILURE';$('#witnessBadge').style.color=w?'var(--red)':'var(--cyan)';
   $('#witnessBody').innerHTML=w?`<dl><div><dt>LAYER</dt><dd>${esc(w.layer)}</dd></div><div><dt>INVARIANT</dt><dd>${esc(w.invariant)}</dd></div><div><dt>EXPECTED</dt><dd>${esc(w.expected)}</dd></div><div><dt>OBSERVED</dt><dd>${esc(w.observed)}</dd></div><div><dt>IMPACT</dt><dd>${esc(w.impact)}</dd></div></dl>`:`<p class="empty">No failure witness under this run. The baseline still carries explicit claim boundaries; PASS is not promoted beyond the implemented model.</p>`;
   const claim=r.claims.find(c=>c.status==='FAIL'||c.status==='WARN')||r.claims.at(-1);$('#claimBoundary').textContent=claim?.notClaimed||'Compiler output is bounded by the implemented model.';
-  renderEnvelopes();renderDiff(meta,mut,b,r);updateCanvasRun();
+  renderEnvelopes();renderDiff(meta,mut,b,r);renderLab();updateCanvasRun();
 }
 function renderEnvelopes(){
   const r=state.run;$('#envelopeChain').innerHTML=r.envelopes.map((e,i)=>`<button class="env-node ${i===state.selectedEnvelope?'active':''}" data-env="${i}"><span>${String(i+1).padStart(2,'0')} / ${esc(e.layer)}</span><strong>${esc(e.label)}</strong><code>${short(e.hash,8)}</code></button>`).join('');
