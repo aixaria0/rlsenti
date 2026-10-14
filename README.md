@@ -4,9 +4,13 @@
 
 RLSenti is an experimental verification workbench for tracing a distributed event from its originating process through execution, block evidence, observation, and verification.
 
-## Live Workbench
+## Live surfaces
 
-**Open the interactive RChain Reality & Sentinel Workbench:**
+**Public Evidence Compiler Showcase:**
+
+https://aixaria0.github.io/rlsenti/
+
+**Deep RChain Reality & Sentinel Workbench:**
 
 https://rchain-trace-buddy.lovable.app/replay
 

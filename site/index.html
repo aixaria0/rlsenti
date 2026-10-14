@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#090b10" />
+  <meta name="description" content="RLSenti — an evidence compiler for deterministic protocol artifacts, provenance envelopes, replay and divergence-aware verification." />
+  <meta property="og:title" content="RLSenti — Evidence Compiler" />
+  <meta property="og:description" content="Artifacts are not evidence until they survive translation." />
+  <title>RLSenti — Evidence Compiler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./site.css?v=1" />
+</head>
+<body>
+  <div class="cursor-glow" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="RLSenti home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><strong>RLSENTI</strong><small>EVIDENCE COMPILER / RCHAIN REALITY WORKBENCH</small></span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="#forge">Forge</a><a href="#envelopes">Provenance</a><a href="#divergence">Replay</a><a href="#boundary">Boundary</a>
+    </nav>
+    <a class="source-link" href="https://github.com/aixaria0/rlsenti" target="_blank" rel="noreferrer">SOURCE ↗</a>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy reveal">
+        <p class="kicker">RAW ARTIFACT / STRUCTURED WITNESS / EXPLICIT BOUNDARY</p>
+        <h1>Artifacts are not evidence<br><em>until they survive translation.</em></h1>
+        <p class="hero-lede">RLSenti compiles deterministic protocol output into linked witness envelopes: normalized, provenance-bound, adversarially challenged, replay-aware, and explicit about what the evidence still cannot prove.</p>
+        <div class="hero-note"><span>SYNTHETIC / DETERMINISTIC WORKBENCH</span><b>≠</b><span>LIVE RCHAIN FINALITY PROOF</span></div>
+        <div class="hero-actions"><a class="btn primary" href="#forge">ENTER REALITY FORGE ↓</a><a class="btn" href="https://rchain-trace-buddy.lovable.app/replay" target="_blank" rel="noreferrer">OPEN DEEP WORKBENCH ↗</a></div>
+      </div>
+      <div class="foundry-frame reveal" aria-label="Animated evidence compiler">
+        <canvas id="foundryCanvas"></canvas>
+        <div class="foundry-hud">
+          <span id="hudStage">INGEST / 01</span>
+          <strong id="hudState">RAW EVENT</strong>
+          <small id="hudHash">awaiting compiler</small>
+        </div>
+        <div class="foundry-corners" aria-hidden="true"></div>
+      </div>
+      <div class="hero-metrics reveal">
+        <div><strong>67</strong><span>COMMITS AFTER RELEASE</span></div>
+        <div><strong>6,786</strong><span>TS / TSX LOC</span></div>
+        <div><strong>162</strong><span>TESTS PASSING</span></div>
+        <div><strong>7</strong><span>INTERACTIVE ROUTES</span></div>
+        <div><strong>16</strong><span>ENVELOPE FIELDS</span></div>
+      </div>
+    </section>
+
+    <section class="narrative" id="protocol">
+      <div class="narrative-stage">
+        <div class="narrative-copy shell">
+          <div class="step active" data-phase="ingest"><span>01 / INGEST</span><h2>Reality enters as an event, not a conclusion.</h2><p>Capability, peer, room, lemma and source context arrive before interpretation. The compiler keeps the origin visible.</p></div>
+          <div class="step" data-phase="normalize"><span>02 / NORMALIZE</span><h2>Shape is made stable before meaning is promoted.</h2><p>Protocol-specific objects become deterministic typed structures. Naming drift and source shape stay at the adapter boundary.</p></div>
+          <div class="step" data-phase="compile"><span>03 / COMPILE</span><h2>Execution becomes a reproducible derivation.</h2><p>Rholang subset reduction, exchange state, QLF-oriented data and block-like evidence are derived from a pinned scenario.</p></div>
+          <div class="step" data-phase="envelope"><span>04 / ENVELOPE</span><h2>Every artifact carries its parent.</h2><p>Payload hash, previous envelope hash, source fields and verification state are sealed into a linked provenance chain.</p></div>
+          <div class="step" data-phase="replay"><span>05 / REPLAY</span><h2>Counterfactuals are useful only when divergence is localizable.</h2><p>Mutate one fact, recompile the world, and preserve the first layer where the evidence chain changes.</p></div>
+          <div class="step" data-phase="witness"><span>06 / WITNESS</span><h2>The verdict ends where the evidence ends.</h2><p>PASS, WARN and FAIL carry a concrete basis. Missing authority is reported as a boundary instead of being silently promoted.</p></div>
+        </div>
+        <aside class="narrative-instrument" aria-hidden="true">
+          <div class="rail-labels"><span>RAW</span><span>NORM</span><span>EXEC</span><span>ENV</span><span>RPL</span><span>WIT</span></div>
+          <div class="rail"><i></i><i></i><i></i><i></i><i></i><i></i><b id="railPulse"></b></div>
+          <div class="instrument-card"><small>CURRENT TRANSFORMATION</small><strong id="phaseTitle">RAW → EVENT</strong><code id="phaseCode">event.origin / capability / lemma</code></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="forge shell" id="forge">
+      <header class="section-head reveal"><div><span>01 / REALITY FORGE</span><h2>Change one fact.<br>Recompile the world.</h2></div><p>The controls below are generated from the same scenarios and mutations exercised by <code>src/lib/compiler/compile.ts</code>. The display is not a disconnected mockup.</p></header>
+      <div class="forge-grid reveal">
+        <aside class="forge-controls">
+          <div class="control-label">SCENARIO / ORIGIN</div>
+          <div id="scenarioButtons" class="scenario-list"></div>
+          <div class="control-label mutation-label">COUNTERFACTUAL / MUTATION</div>
+          <div id="mutationButtons" class="mutation-list"></div>
+        </aside>
+        <div class="forge-core">
+          <div class="forge-status"><div><small>COMPILE VERDICT</small><strong id="runStatus">—</strong></div><div><small>EVENT</small><code id="runEvent">—</code></div><div><small>ENVELOPES</small><strong id="runEnvelopes">—</strong></div></div>
+          <div id="forgePipeline" class="forge-pipeline"></div>
+          <div class="compiler-line"><span>first divergence</span><strong id="firstDivergence">NONE / BASELINE</strong></div>
+          <div class="compiler-line"><span>replay</span><strong id="replayState">—</strong></div>
+          <div class="compiler-line"><span>cross-node</span><strong id="crossState">—</strong></div>
+          <div class="compiler-line"><span>certificate</span><strong id="latticeState">—</strong></div>
+        </div>
+        <aside class="witness-card">
+          <div class="witness-cap"><span>FAILURE WITNESS</span><b id="witnessBadge">NONE</b></div>
+          <div id="witnessBody" class="witness-body"></div>
+          <div class="seal"><span>CLAIM BOUNDARY</span><p id="claimBoundary">Compiler output is bounded by the implemented model.</p></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="envelopes shell" id="envelopes">
+      <header class="section-head reveal"><div><span>02 / ENVELOPE CHAMBER</span><h2>A chain of custody<br>for computation.</h2></div><p>Each envelope binds a typed payload to the previous envelope hash. Select a layer to inspect what was carried forward—and what was not.</p></header>
+      <div class="envelope-layout reveal">
+        <div id="envelopeChain" class="envelope-chain"></div>
+        <aside class="envelope-inspector">
+          <div class="inspector-top"><small>SELECTED ENVELOPE</small><strong id="envLayer">—</strong></div>
+          <h3 id="envLabel">Select a layer</h3>
+          <p id="envSummary">The inspector will expose the hash link, payload digest and evidence fields.</p>
+          <dl><div><dt>ENVELOPE HASH</dt><dd id="envHash">—</dd></div><div><dt>PAYLOAD HASH</dt><dd id="envPayload">—</dd></div><div><dt>PREVIOUS HASH</dt><dd id="envPrev">—</dd></div></dl>
+          <div class="field-title">EVIDENCE FIELDS</div><div id="envFields" class="env-fields"></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="divergence" id="divergence">
+      <div class="shell">
+        <header class="section-head reveal"><div><span>03 / DIVERGENCE LAB</span><h2>Replay is not repetition.<br>It is localization.</h2></div><p>Baseline and mutated realities are compared at the earliest changed evidence layer. Downstream differences remain consequences, not substitutes for the first cause.</p></header>
+        <div class="diff-stage reveal">
+          <article class="reality-card baseline"><span>RUN A / BASELINE</span><strong id="baseTitle">—</strong><code id="baseHash">—</code><div id="baseTrace" class="trace"></div></article>
+          <div class="diff-axis"><span id="diffLayer">NO DIVERGENCE</span><i></i><b></b><em>FIRST DIFFERENCE</em></div>
+          <article class="reality-card active"><span>RUN B / ACTIVE</span><strong id="activeTitle">—</strong><code id="activeHash">—</code><div id="activeTrace" class="trace"></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="boundary shell" id="boundary">
+      <header class="section-head reveal"><div><span>04 / CLAIM CONTRACT</span><h2>Structure can carry a claim.<br>It cannot manufacture truth.</h2></div></header>
+      <div class="boundary-grid reveal">
+        <article><span>DERIVED</span><h3>Deterministic execution</h3><p>Same scenario and mutation produce reproducible in-browser artifacts and domain-separated hashes.</p><footer>REPRODUCIBLE ≠ UNIVERSAL</footer></article>
+        <article><span>BOUND</span><h3>Linked provenance</h3><p>Every important artifact can reference its parent evidence through an explicit envelope chain.</p><footer>HASH LINK ≠ TRUTH</footer></article>
+        <article><span>CHALLENGED</span><h3>Adversarial scenarios</h3><p>Lying nodes, missing capabilities, duplicate validators, absent justifications and trace tampering are first-class inputs.</p><footer>NEGATIVE CONTROL ≠ PRODUCTION PROOF</footer></article>
+        <article class="not-promoted"><span>NOT PROMOTED</span><h3>Live Casper finality</h3><p>No live RNode or Sentinel endpoint is contacted by the compiler. Node-count and PBFT-shaped fixtures are not stake-weighted Casper proof.</p><footer>MODEL ≠ NETWORK AUTHORITY</footer></article>
+      </div>
+    </section>
+
+    <section class="architecture shell">
+      <header class="section-head reveal"><div><span>05 / VERTICAL ARCHITECTURE</span><h2>One evidence surface.<br>Multiple explicit boundaries.</h2></div><p>RLSenti is useful because the layers stay distinguishable. It composes evidence without pretending the layers are equivalent.</p></header>
+      <div class="arch-stack reveal">
+        <div><b>01</b><span>QuantumOS</span><p>interaction / capability / lemma</p></div>
+        <div><b>02</b><span>QLF / ZFA</span><p>event-level logical certificate</p></div>
+        <div><b>03</b><span>Rholang</span><p>executable process</p></div>
+        <div><b>04</b><span>ρ-calculus / rspace</span><p>deterministic COMM reduction</p></div>
+        <div><b>05</b><span>RChain-like block</span><p>recorded state transition</p></div>
+        <div><b>06</b><span>Sentinel</span><p>independent observation surface</p></div>
+        <div><b>07</b><span>Sovereign Lattice</span><p>BFT-shaped certificate analysis</p></div>
+        <div class="final"><b>08</b><span>Verification</span><p>bounded verdict + witness</p></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer shell">
+    <div><strong>RLSENTI</strong><p>Evidence compiler / provenance workbench / integration-ready prototype.</p></div>
+    <div><a href="https://rchain-trace-buddy.lovable.app/replay" target="_blank" rel="noreferrer">DEEP WORKBENCH ↗</a><a href="https://github.com/aixaria0/rlsenti" target="_blank" rel="noreferrer">SOURCE ↗</a></div>
+  </footer>
+  <script src="./site.js?v=1" defer></script>
+</body>
+</html>
