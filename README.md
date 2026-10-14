@@ -12,7 +12,7 @@ https://aixaria0.github.io/rlsenti/
 
 **Deep RChain Reality & Sentinel Workbench:**
 
-https://rchain-trace-buddy.lovable.app/replay
+https://aixaria0.github.io/rlsenti/workbench/
 
 The workbench exposes the provenance chain, Reality Diff, semantic diff, proof-carrying execution, replay, counterfactuals, adversarial evidence challenges, QLF linkage, adapter status, formal invariant traces, and the integrated demo.
 

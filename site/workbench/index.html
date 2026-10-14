@@ -1,0 +1,28 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RLSenti — Deep Workbench</title><meta name="description" content="Deep compiler, provenance, evidence and replay workbench for RLSenti."><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="./workbench.css?v=1"></head><body>
+<header class="bar"><a class="brand" href="../"><span class="mark"><i></i><i></i><i></i></span><span><b>RLSENTI</b><small>DEEP WORKBENCH / LOCAL EVIDENCE SURFACE</small></span></a><div class="barlinks"><a href="../">SHOWCASE ↗</a><a href="https://github.com/aixaria0/rlsenti" target="_blank" rel="noreferrer">SOURCE ↗</a></div></header>
+<main class="layout">
+  <aside class="rail"><div class="rail-title">REALITY CONTROL</div><label>SCENARIO<select id="scenario"></select></label><label>MUTATION<select id="mutation"></select></label><div class="runstate"><small>VERDICT</small><strong id="status">—</strong><small>FIRST DIVERGENCE</small><code id="firstDiv">—</code></div><nav id="tabs"><button data-tab="compiler" class="active">01 / COMPILER</button><button data-tab="provenance">02 / PROVENANCE</button><button data-tab="evidence">03 / EVIDENCE</button><button data-tab="replay">04 / REPLAY</button></nav><div class="scope">SYNTHETIC / DETERMINISTIC<br><b>≠ LIVE RCHAIN FINALITY PROOF</b></div></aside>
+  <section class="stage">
+    <header class="stage-head"><div><span id="runLabel">BASELINE</span><h1 id="runTitle">Evidence Compiler</h1></div><div class="metrics"><div><small>EVENT</small><code id="eventId">—</code></div><div><small>ENVELOPES</small><b id="envelopeCount">0</b></div><div><small>COMM</small><b id="commCount">—</b></div><div><small>BLOCK</small><code id="blockHash">—</code></div></div></header>
+
+    <section class="view active" data-view="compiler">
+      <div class="split"><article class="panel code-panel"><header><span>RHOLANG SOURCE</span><code id="traceHash">trace —</code></header><pre id="source">—</pre></article><article class="panel"><header><span>REDUCTION TRACE</span><b id="execStatus">—</b></header><div id="steps" class="steps"></div></article></div>
+      <div class="split lower"><article class="panel"><header><span>QLF CERTIFICATE</span><b id="qlfStatus">—</b></header><div id="qlf" class="kv"></div></article><article class="panel"><header><span>COMPILER BASIS</span><b>WHY</b></header><ol id="why" class="why"></ol></article></div>
+    </section>
+
+    <section class="view" data-view="provenance">
+      <div class="prov-layout"><div id="envelopes" class="envelopes"></div><article class="panel inspector"><header><span>ENVELOPE INSPECTOR</span><b id="envLayer">—</b></header><h2 id="envTitle">—</h2><p id="envSummary">—</p><div id="envMeta" class="kv"></div><div class="subhead">EVIDENCE FIELDS</div><div id="envFields" class="fields"></div></article></div>
+    </section>
+
+    <section class="view" data-view="evidence">
+      <div class="evidence-top"><article class="panel"><header><span>CROSS-NODE</span><b id="crossStatus">—</b></header><div id="cross" class="kv"></div></article><article class="panel"><header><span>SOVEREIGN LATTICE</span><b id="latticeStatus">—</b></header><div id="lattice" class="kv"></div></article></div>
+      <article class="panel wide"><header><span>INVARIANTS</span><b id="invCount">0</b></header><div id="invariants" class="matrix"></div></article>
+      <article class="panel wide"><header><span>CLAIM CONTRACT</span><b>BOUNDED</b></header><div id="claims" class="claims"></div></article>
+    </section>
+
+    <section class="view" data-view="replay">
+      <div class="replay-grid"><article class="panel"><header><span>RUN A / BASELINE</span><b id="baseStatus">—</b></header><div id="baseReality" class="kv"></div></article><div class="divergence"><span>FIRST</span><b></b><code id="divergenceLayer">NONE</code></div><article class="panel"><header><span>RUN B / ACTIVE</span><b id="activeStatus">—</b></header><div id="activeReality" class="kv"></div></article></div>
+      <div class="split lower"><article class="panel"><header><span>LOCAL REPLAY</span><b id="replayStatus">—</b></header><div id="replay" class="kv"></div></article><article class="panel witness"><header><span>FAILURE WITNESS</span><b id="witnessStatus">NONE</b></header><div id="witness">No failure witness under this run.</div></article></div>
+    </section>
+  </section>
+</main><script src="./workbench.js?v=1" defer></script></body></html>
